@@ -1,0 +1,111 @@
+Configuring connection-0.2.8...
+Preprocessing library for connection-0.2.8..
+Building library for connection-0.2.8..
+[1 of 2] Compiling Network.Connection.Types ( Network/Connection/Types.hs, .stack-work/dist/x86_64-linux-tinfo6/Cabal-2.4.0.1/build/Network/Connection/Types.o )
+
+Network/Connection/Types.hs:19:1: warning: [-Wdeprecations]
+    Module ‘Network.BSD’ is deprecated:
+      This platform dependent module is no longer supported.
+   |
+19 | import Network.BSD (HostName)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[2 of 2] Compiling Network.Connection ( Network/Connection.hs, .stack-work/dist/x86_64-linux-tinfo6/Cabal-2.4.0.1/build/Network/Connection.o )
+
+Network/Connection.hs:52:1: warning: [-Wunused-imports]
+    The import of ‘Control.Applicative’ is redundant
+      except perhaps to import instances from ‘Control.Applicative’
+    To import instances alone, use: import Control.Applicative()
+   |
+52 | import Control.Applicative
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Network/Connection.hs:64:1: warning: [-Wdeprecations]
+    Module ‘Network’ is deprecated:
+      The high level Network interface is no longer supported. Please use Network.Socket.
+   |
+64 | import qualified Network as N
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Network/Connection.hs:66:1: warning: [-Wdeprecations]
+    Module ‘Network.BSD’ is deprecated:
+      This platform dependent module is no longer supported.
+   |
+66 | import Network.BSD (getProtocolNumber)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Network/Connection.hs:101:1: warning: [-Wunused-top-binds]
+    Defined but not used: ‘connectionSessionManager’
+    |
+101 | connectionSessionManager mvar = TLS.SessionManager
+    | ^^^^^^^^^^^^^^^^^^^^^^^^
+
+Network/Connection.hs:117:62: warning: [-Wdeprecations]
+    In the use of ‘ciphersuite_all’
+    (imported from Network.TLS.Extra, but defined in Network.TLS.Extra.Cipher):
+    "This ciphersuite list contains RC4. Use ciphersuite_strong or ciphersuite_default instead."
+    |
+117 |         { TLS.clientSupported = def { TLS.supportedCiphers = TLS.ciphersuite_all }
+    |                                                              ^^^^^^^^^^^^^^^^^^^
+
+Network/Connection.hs:175:58: warning: [-Wdeprecations]
+    In the use of data constructor ‘PortNumber’
+    (imported from Network):
+    Deprecated: "The high level Network interface is no longer supported. Please use Network.Socket."
+    |
+175 |     let doConnect = conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams)
+    |                                                          ^^^^^^^^^^^^
+
+Network/Connection.hs:180:85: warning: [-Wdeprecations]
+    In the use of data constructor ‘PortNumber’
+    (imported from Network):
+    Deprecated: "The high level Network interface is no longer supported. Please use Network.Socket."
+    |
+180 |         getConFct (Just (OtherProxy h p))            = return $ \_ _ -> resolve' h (N.PortNumber p)
+    |                                                                                     ^^^^^^^^^^^^
+
+Network/Connection.hs:181:84: warning: [-Wdeprecations]
+    In the use of data constructor ‘PortNumber’
+    (imported from Network):
+    Deprecated: "The high level Network interface is no longer supported. Please use Network.Socket."
+    |
+181 |         getConFct (Just (SockSettingsSimple h p))    = return $ socksConnectTo' h (N.PortNumber p)
+    |                                                                                    ^^^^^^^^^^^^
+
+Network/Connection.hs:192:80: warning: [-Wdeprecations]
+    In the use of data constructor ‘PortNumber’
+    (imported from Network):
+    Deprecated: "The high level Network interface is no longer supported. Please use Network.Socket."
+    |
+192 |                         Just (sHost, sPort) -> return $ socksConnectTo' sHost (N.PortNumber $ fromIntegral (sPort :: Int))
+    |                                                                                ^^^^^^^^^^^^
+
+Network/Connection.hs:206:29: warning: [-Wdeprecations]
+    In the use of data constructor ‘Service’ (imported from Network):
+    Deprecated: "The high level Network interface is no longer supported. Please use Network.Socket."
+    |
+206 |                             N.Service serv -> serv
+    |                             ^^^^^^^^^
+
+Network/Connection.hs:206:39: warning: [-Wname-shadowing]
+    This binding for ‘serv’ shadows the existing binding
+      bound at Network/Connection.hs:205:17
+    |
+206 |                             N.Service serv -> serv
+    |                                       ^^^^
+
+Network/Connection.hs:207:29: warning: [-Wdeprecations]
+    In the use of data constructor ‘PortNumber’
+    (imported from Network):
+    Deprecated: "The high level Network interface is no longer supported. Please use Network.Socket."
+    |
+207 |                             N.PortNumber n -> show n
+    |                             ^^^^^^^^^^^^
+
+Network/Connection.hs:209:22: warning: [-Wdeprecations]
+    In the use of ‘getProtocolNumber’ (imported from Network.BSD):
+    Deprecated: "This platform dependent module is no longer supported."
+    |
+209 |             proto <- getProtocolNumber "tcp"
+    |                      ^^^^^^^^^^^^^^^^^
+Installing library in /home/luc/.stack/snapshots/x86_64-linux-tinfo6/lts-13.9/8.6.3/lib/x86_64-linux-ghc-8.6.3/connection-0.2.8-ADVoPH9iKwY15D4A7yMIXW
+Registering library for connection-0.2.8..

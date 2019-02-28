@@ -1,0 +1,29 @@
+name:                parse-exposition
+version:             0.1.0.0
+-- synopsis:
+-- description:
+homepage:            https://github.com/SocietyForArtisticResearch/parse-exposition#readme
+license:             GPL
+license-file:        LICENSE
+author:              Luc Döbereiner
+maintainer:          luc.doebereiner@researchcatalogue.net
+copyright:           2019 Luc Döbereiner
+category:            Web
+build-type:          Simple
+cabal-version:       >=1.10
+extra-source-files:  README.md
+
+executable parse-exposition
+  hs-source-dirs:      src
+  main-is:             Main.hs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
+                     , text 
+                     , http-conduit
+                     , html-conduit
+                     , xml-conduit
+                     , aeson
+                     , aeson-pretty
+                     , containers
+                     , blaze-html
+

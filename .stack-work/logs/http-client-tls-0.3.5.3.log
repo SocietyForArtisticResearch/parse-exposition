@@ -1,0 +1,6 @@
+Configuring http-client-tls-0.3.5.3...
+Preprocessing library for http-client-tls-0.3.5.3..
+Building library for http-client-tls-0.3.5.3..
+[1 of 1] Compiling Network.HTTP.Client.TLS ( Network/HTTP/Client/TLS.hs, .stack-work/dist/x86_64-linux-tinfo6/Cabal-2.4.0.1/build/Network/HTTP/Client/TLS.o )
+Installing library in /home/luc/.stack/snapshots/x86_64-linux-tinfo6/lts-13.9/8.6.3/lib/x86_64-linux-ghc-8.6.3/http-client-tls-0.3.5.3-H7GxqzenjHk4Qg1rV1wft8
+Registering library for http-client-tls-0.3.5.3..

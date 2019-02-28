@@ -1,0 +1,18 @@
+Configuring asn1-types-0.3.2...
+Preprocessing library for asn1-types-0.3.2..
+Building library for asn1-types-0.3.2..
+[1 of 6] Compiling Data.ASN1.BitArray ( Data/ASN1/BitArray.hs, .stack-work/dist/x86_64-linux-tinfo6/Cabal-2.4.0.1/build/Data/ASN1/BitArray.o )
+[2 of 6] Compiling Data.ASN1.OID    ( Data/ASN1/OID.hs, .stack-work/dist/x86_64-linux-tinfo6/Cabal-2.4.0.1/build/Data/ASN1/OID.o )
+[3 of 6] Compiling Data.ASN1.Types.Lowlevel ( Data/ASN1/Types/Lowlevel.hs, .stack-work/dist/x86_64-linux-tinfo6/Cabal-2.4.0.1/build/Data/ASN1/Types/Lowlevel.o )
+[4 of 6] Compiling Data.ASN1.Types.String ( Data/ASN1/Types/String.hs, .stack-work/dist/x86_64-linux-tinfo6/Cabal-2.4.0.1/build/Data/ASN1/Types/String.o )
+
+Data/ASN1/Types/String.hs:154:22: warning: [-Wname-shadowing]
+    This binding for ‘b’ shadows the existing binding
+      bound at Data/ASN1/Types/String.hs:151:13
+    |
+154 |   where fromUTF32 (a:b:c:d:l) =
+    |                      ^
+[5 of 6] Compiling Data.ASN1.Types  ( Data/ASN1/Types.hs, .stack-work/dist/x86_64-linux-tinfo6/Cabal-2.4.0.1/build/Data/ASN1/Types.o )
+[6 of 6] Compiling Data.ASN1.Pretty ( Data/ASN1/Pretty.hs, .stack-work/dist/x86_64-linux-tinfo6/Cabal-2.4.0.1/build/Data/ASN1/Pretty.o )
+Installing library in /home/luc/.stack/snapshots/x86_64-linux-tinfo6/lts-13.9/8.6.3/lib/x86_64-linux-ghc-8.6.3/asn1-types-0.3.2-maKO7uGsBm1nq31PERdQ5
+Registering library for asn1-types-0.3.2..
