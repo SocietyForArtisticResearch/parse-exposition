@@ -149,24 +149,8 @@ getExposition url = do
   doc <- httpSink req $ const sinkDoc
   return (parseExposition (fromDocument doc))
 
--- main :: IO ()
--- main = do
---   exposition <-
---     getExposition "https://www.researchcatalogue.net/view/343349/343350"
---   TIO.putStrLn $ encodeTxt exposition
 main :: IO ()
 main = do
   url <- getArgs
   exp <- getExposition $ head url
   TIO.putStrLn $ encodeTxt exp
--- main = getArgs >>= parse >>= putStr . tac
-    -- tac  = unlines . reverse . lines
-    -- parse ["-h"] = usage   >> exit
-    -- parse ["-v"] = version >> exit
-    -- parse []     = getContents
-    -- parse fs     = concat `fmap` mapM readFile fs
-    -- usage   = putStrLn "Usage: tac [-vh] [file ..]"
-    -- version = putStrLn "Haskell tac 0.1"
-    -- exit    = exitWith ExitSuccess
-    -- die     = exitWith (ExitFailure 1)
-    -- "https://www.researchcatalogue.net/view/343349/343350"
