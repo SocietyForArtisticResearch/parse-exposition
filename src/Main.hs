@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 import Data.Aeson (FromJSON, ToJSON)
@@ -13,9 +14,12 @@ import Data.Text.Read (decimal)
 import GHC.Generics
 import Network.HTTP.Simple (httpSink, parseRequest)
 import System.Environment
+import System.Exit
 import Text.Blaze.Html (toHtml)
 import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.HTML.DOM (sinkDoc)
+import qualified Text.Pandoc as Pan
+import qualified Text.Pandoc.Options as PanOptions
 import Text.XML (Element(..), Name, Node(..))
 import Text.XML.Cursor
   ( ($/)
@@ -68,11 +72,21 @@ data Tool = Tool
 instance ToJSON (Tool)
 
 -- | Content types to be extended
-data ToolContent =
-  TextContent T.Text
+data ToolContent
+  = TextContent { content :: T.Text }
+  | ImageContent { imageUrl :: T.Text }
   deriving (Generic, Show)
 
 instance ToJSON (ToolContent)
+
+data ImportOptions = ImportOptions
+  { markdown :: Bool
+  , url :: String
+  }
+
+type ToolTypeName = T.Text
+
+type ToolSpec = (ToolTypeName, (Cursor Node -> ToolContent))
 
 -- | Get json-ld metadata for a particular content field
 -- Only works for published expositions
@@ -119,20 +133,34 @@ extractSizePos styles = (positions, sizes)
     heights = map (styleProperty "height") assocStyles
     sizes = Size <$> widths <*> heights
 
--- |Get text tools
--- TODO: needs to be generalized a bit for all tool types
-getTextTools :: Cursor Node -> [Tool]
-getTextTools cursor = L.zipWith4 Tool ids positions sizes textContent
+textContent :: Cursor Node -> ToolContent
+textContent cursor =
+  TextContent $ (toStrict . renderHtml . toHtml . node) cursor
+
+imageContent :: Cursor Node -> ToolContent
+imageContent cursor = ImageContent img
   where
-    tools = cursor $// check (checkClass "tool-text")
+    img = T.concat $ cursor $// element "img" >=> attribute "src"
+
+textSpec :: ToolSpec
+textSpec = ("text", textContent)
+
+imageSpec :: ToolSpec
+imageSpec = ("picture", imageContent)
+
+-- | Get tools of a certain type
+getTools :: ToolSpec -> Cursor Node -> [Tool]
+getTools (toolTypeName, contentFun) cursor =
+  L.zipWith4 Tool ids positions sizes toolContent
+  where
+    tools = cursor $// attributeIs "data-tool" toolTypeName
     ids = map (T.concat . attribute "data-id") tools
     styles = map (T.concat . attribute "style") tools
     (positions, sizes) = extractSizePos styles
     content =
-      cursor $// check (checkClass "tool-text") &/
+      cursor $// attributeIs "data-tool" toolTypeName &/
       check (checkClass "tool-content")
-    textContent =
-      map (TextContent . toStrict . renderHtml . toHtml . node) content
+    toolContent = map contentFun content
 
 parseExposition :: Cursor Node -> Exposition
 parseExposition cursor =
@@ -140,17 +168,30 @@ parseExposition cursor =
     { title = getMeta cursor "citation_title"
     , author = getMeta cursor "citation_author"
     , date = getMeta cursor "citation_publication_date"
-    , tools = getTextTools cursor
+    , tools = getTools textSpec cursor ++ getTools imageSpec cursor
     }
 
-getExposition :: String -> IO Exposition
-getExposition url = do
-  req <- parseRequest url
+getExposition :: ImportOptions -> IO Exposition
+getExposition options = do
+  req <- parseRequest (url options)
   doc <- httpSink req $ const sinkDoc
-  return (parseExposition (fromDocument doc))
+  return $ parseExposition (fromDocument doc)
+
+parseArgs :: [String] -> ImportOptions
+parseArgs args = makeOptions args (ImportOptions False "")
+  where
+    makeOptions :: [String] -> ImportOptions -> ImportOptions
+    makeOptions ("-m":t) options = makeOptions t (options {markdown = True})
+    makeOptions (url:t) options = makeOptions t (options {url = url})
+    makeOptions [] options = options
+
+usage = putStrLn "Usage: parse-exposition [-m] rc-url"
+
+exit = exitWith ExitSuccess
 
 main :: IO ()
 main = do
-  url <- getArgs
-  exp <- getExposition $ head url
+  args <- getArgs
+  exp <- getExposition $ parseArgs args
+  -- TODO deal with markdown conversion here
   TIO.putStrLn $ encodeTxt exp

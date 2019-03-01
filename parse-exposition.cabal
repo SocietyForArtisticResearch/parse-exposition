@@ -26,4 +26,5 @@ executable parse-exposition
                      , aeson-pretty
                      , containers
                      , blaze-html
+                     , pandoc
 
