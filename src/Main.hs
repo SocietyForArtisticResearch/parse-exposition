@@ -242,10 +242,6 @@ expToMarkdown exp = do
   mdTools <- mapM toolToMarkdown (tools exp)
   return $ exp {tools = mdTools}
 
--- writeExpMarkdown :: Exposition -> IO ()
--- writeExpMarkdown exp = do
---   md <- liftM expToMarkdown exp
---   TIO.putStrLn $ encodeTxt md
 --------------------
 --- Main functions
 --------------------
