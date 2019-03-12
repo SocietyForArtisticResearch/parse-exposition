@@ -1,5 +1,5 @@
 name:                parse-exposition
-version:             0.1.0.0
+version:             0.2.0.0
 -- synopsis:
 -- description:
 homepage:            https://github.com/SocietyForArtisticResearch/parse-exposition#readme
@@ -18,10 +18,14 @@ executable parse-exposition
   main-is:             Main.hs
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5
-                     , text 
+                     , text
+                     , filepath
+                     , directory
+                     , conduit
                      , http-conduit
                      , html-conduit
                      , xml-conduit
+                     , conduit-extra
                      , aeson
                      , aeson-pretty
                      , containers
