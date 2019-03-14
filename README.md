@@ -2,9 +2,7 @@
 Convert Graphical RC Expositions to Structured Haskell Data
 (c) 2019 by Luc Döbereiner
 
-The program outputs JSON data on standard out.
-
-It only works for published expositions at the moment
+The program outputs JSON data on standard out and downloads media into a "media" folder.
 
 ## Requirements
 
@@ -12,18 +10,19 @@ It only works for published expositions at the moment
 ```stack build```
 
 ## Build and run
-```stack build --exec "parse-exposition https://www.researchcatalogue.net/view/343349/343350"```
+```stack build --exec "parse-exposition 343349"```
 
 ## Options
 * `-m` for markdown conversion
 * `-d` for download of media files (into "./media" folder)
 
-```stack build --exec "parse-exposition -d -m https://www.researchcatalogue.net/view/384876/384878"```
+```stack build --exec "parse-exposition -d -m 384876"```
 
 
 ## Run only
-```stack exec parse-exposition https://www.researchcatalogue.net/view/343349/343350```
+```stack exec parse-exposition 343349```
 
 ## TODO
-* Download all weaves of an exposition
-* Make metadata from jsonld meta block optional in order to enable non-published expos (perhaps get metadata from menubar)
+* Conversion to svg (perhaps in elm)
+* CSS Grid Quantizer
+

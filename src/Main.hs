@@ -5,6 +5,7 @@
 import Control.Monad
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson.Encode.Pretty (encodePretty)
+import Data.Char (isSpace)
 import Data.Conduit ((.|), runConduitRes)
 import qualified Data.Conduit.Binary as CB
 import qualified Data.List as L
@@ -41,17 +42,26 @@ import Text.XML.Cursor
   , element
   , fromDocument
   , hasAttribute
+  , parent
   )
-import Text.XML.Cursor.Generic (Cursor(..), node)
+import Text.XML.Cursor.Generic (Cursor(..), node, toCursor)
 
 data Exposition = Exposition
-  { title :: T.Text
-  , author :: T.Text
-  , date :: T.Text
-  , tools :: [Tool]
+  { expositionToc :: [(T.Text, T.Text)]
+  , expositionId :: T.Text
+  , expositionMetaData :: ExpositionMetaData
+  , expositionWeaves :: [Weave]
   } deriving (Generic, Show)
 
 instance ToJSON (Exposition)
+
+data Weave = Weave
+  { weaveTitle :: T.Text
+  , weaveUrl :: T.Text
+  , weaveTools :: [Tool]
+  } deriving (Generic, Show)
+
+instance ToJSON (Weave)
 
 data Position = Position
   { left :: Maybe Int
@@ -88,7 +98,7 @@ instance ToJSON (ToolContent)
 
 data ImportOptions = ImportOptions
   { markdown :: Bool
-  , url :: String
+  , expId :: String
   , download :: Maybe String
   }
 
@@ -96,11 +106,15 @@ type ToolTypeName = T.Text
 
 type ToolSpec = (ToolTypeName, (Cursor Node -> ToolContent))
 
--- | Get json-ld metadata for a particular content field
--- Only works for published expositions
-getMeta :: Cursor Node -> T.Text -> T.Text
-getMeta cursor name =
-  T.concat $ cursor $// attributeIs "name" name >=> attribute "content"
+data ExpositionMetaData = ExpoMetaData
+  { metaTitle :: T.Text
+  , metaDate :: T.Text
+  , metaAuthors :: [T.Text]
+  , metaKeywords :: [T.Text]
+  , metaExpMainUrl :: T.Text
+  } deriving (Generic, Show)
+
+instance ToJSON (ExpositionMetaData)
 
 -- | Encodes an object as strict json text
 encodeTxt :: ToJSON a => a -> T.Text
@@ -211,18 +225,19 @@ downloadTool dir tool =
         _ -> do
           return ()
 
-downloadTools :: ImportOptions -> [Tool] -> IO ()
-downloadTools options tools =
-  case download options of
-    Nothing -> do
-      return ()
-    Just dir -> do
-      exists <- doesDirectoryExist dir
-      if not exists
-        then createDirectory dir
-        else return ()
-      mapM (downloadTool dir) tools
-      return ()
+downloadTools :: ImportOptions -> Exposition -> IO ()
+downloadTools options exposition =
+  let tools = L.concat $ map weaveTools (expositionWeaves exposition)
+   in case download options of
+        Nothing -> do
+          return ()
+        Just dir -> do
+          exists <- doesDirectoryExist dir
+          if not exists
+            then createDirectory dir
+            else return ()
+          mapM (downloadTool dir) tools
+          return ()
 
 --------------------
 --- Markdown conversion
@@ -239,8 +254,12 @@ toolToMarkdown tool =
 
 expToMarkdown :: Pan.PandocMonad m => Exposition -> m Exposition
 expToMarkdown exp = do
-  mdTools <- mapM toolToMarkdown (tools exp)
-  return $ exp {tools = mdTools}
+  mdTools <- mapM (mapM toolToMarkdown) (map weaveTools (expositionWeaves exp))
+  return $
+    exp
+      { expositionWeaves =
+          zipWith (\w t -> w {weaveTools = t}) (expositionWeaves exp) mdTools
+      }
 
 --------------------
 --- Main functions
@@ -250,27 +269,97 @@ insertFileNames options exp =
   case download options of
     Nothing -> exp
     Just dir ->
-      exp
-        { tools =
+      let toolsFname =
             map
-              (\tool -> tool {toolMediaFile = toolFileName tool dir})
-              (tools exp)
+              (map (\tool -> tool {toolMediaFile = toolFileName tool dir}))
+              (map weaveTools (expositionWeaves exp))
+       in exp
+            { expositionWeaves =
+                zipWith
+                  (\w t -> w {weaveTools = t})
+                  (expositionWeaves exp)
+                  toolsFname
+            }
+
+getWeave :: (T.Text, T.Text) -> IO Weave
+getWeave (title, url) = do
+  req <- parseRequest $ "https://www.researchcatalogue.net" <> T.unpack url
+  doc <- httpSink req $ const sinkDoc
+  let cursor = fromDocument doc
+  let tools = L.concat $ map (\spec -> getTools spec cursor) toolSpecs
+  return $ Weave {weaveTitle = title, weaveUrl = url, weaveTools = tools}
+
+parseExposition :: T.Text -> ExpositionMetaData -> Cursor Node -> IO Exposition
+parseExposition id metadata cursor = do
+  let expToc = toc cursor
+  weaves <- mapM getWeave expToc
+  return $ Exposition expToc id metadata weaves
+
+toc :: Cursor Node -> [(T.Text, T.Text)]
+toc cursor =
+  let tocTitles =
+        cursor $// attributeIs "class" "mainmenu" &/
+        check (checkClass "menu-home") &//
+        element "a" &/
+        content
+      tocUrls =
+        cursor $// attributeIs "class" "mainmenu" &/
+        check (checkClass "menu-home") &//
+        element "a" >=>
+        attribute "href"
+   in L.filter (\(title, url) -> T.isInfixOf "view" url) $ zip tocTitles tocUrls
+
+getExposition :: ImportOptions -> ExpositionMetaData -> IO Exposition
+getExposition options metadata = do
+  req <- parseRequest $ T.unpack (metaExpMainUrl metadata)
+  doc <- httpSink req $ const sinkDoc
+  exp <- parseExposition (T.pack (expId options)) metadata (fromDocument doc)
+  return $ insertFileNames options exp
+
+detailsUrl :: String -> String
+detailsUrl expId =
+  "https://www.researchcatalogue.net/profile/show-exposition?exposition=" <>
+  expId
+
+trim :: T.Text -> T.Text
+trim = T.dropWhileEnd isSpace . T.dropWhile isSpace
+
+unwrapTxt :: Maybe T.Text -> T.Text
+unwrapTxt Nothing = ""
+unwrapTxt (Just txt) = txt
+
+parseDetailsPage :: Cursor Node -> ExpositionMetaData
+parseDetailsPage cursor =
+  let title =
+        T.concat $
+        cursor $// element "h2" >=>
+        attributeIs "class" "meta-headline" &/ content
+      authors =
+        cursor $// element "h2" >=>
+        attributeIs "class" "meta-headline" &| parent &// element "a" &/ content
+      mainUrl =
+        T.concat $
+        cursor $// attributeIs "class" "meta-left-col" &/
+        attributeIs "class" "button" >=>
+        attribute "href"
+      ths =
+        cursor $// attributeIs "class" "meta-table" &// element "th" &/ content
+      tds =
+        cursor $// attributeIs "class" "meta-table" &// element "td" &/ content
+      metadata = zip ths tds
+   in ExpoMetaData
+        { metaTitle = trim title
+        , metaDate = unwrapTxt $ lookup "date" metadata
+        , metaKeywords = T.splitOn "," $ unwrapTxt $ lookup "keywords" metadata
+        , metaAuthors = L.concat authors
+        , metaExpMainUrl = mainUrl
         }
 
-parseExposition :: Cursor Node -> Exposition
-parseExposition cursor =
-  Exposition
-    { title = getMeta cursor "citation_title"
-    , author = getMeta cursor "citation_author"
-    , date = getMeta cursor "citation_publication_date"
-    , tools = L.concat $ map (\spec -> getTools spec cursor) toolSpecs
-    }
-
-getExposition :: ImportOptions -> IO Exposition
-getExposition options = do
-  req <- parseRequest (url options)
+getDetailsPageData :: ImportOptions -> IO ExpositionMetaData
+getDetailsPageData options = do
+  req <- parseRequest $ detailsUrl (expId options)
   doc <- httpSink req $ const sinkDoc
-  return $ insertFileNames options $ parseExposition (fromDocument doc)
+  return $ parseDetailsPage (fromDocument doc)
 
 parseArgs :: [String] -> ImportOptions
 parseArgs args = makeOptions args (ImportOptions False "" Nothing)
@@ -279,10 +368,10 @@ parseArgs args = makeOptions args (ImportOptions False "" Nothing)
     makeOptions ("-m":t) options = makeOptions t (options {markdown = True})
     makeOptions ("-d":t) options =
       makeOptions t (options {download = Just "media"})
-    makeOptions (url:t) options = makeOptions t (options {url = url})
+    makeOptions (id:t) options = makeOptions t (options {expId = id})
     makeOptions [] options = options
 
-usage = putStrLn "Usage: parse-exposition [-m] [-d] rc-url"
+usage = putStrLn "Usage: parse-exposition [-m] [-d] exposition-id"
 
 exit = exitWith ExitSuccess
 
@@ -296,8 +385,9 @@ main :: IO ()
 main = do
   args <- getArgs
   let options = parseArgs args
-  exp <- getExposition options
-  downloadTools options (tools exp)
+  details <- getDetailsPageData options
+  exp <- getExposition options details
+  downloadTools options exp
   if markdown options
     then TIO.putStrLn =<< encodeMdTxt exp
     else TIO.putStrLn $ encodeTxt exp
