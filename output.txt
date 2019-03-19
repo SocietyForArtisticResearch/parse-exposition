@@ -1,0 +1,60 @@
+{
+    "expositionToc": [
+        [
+            "How to upload an audio recording",
+            "/view/249652/249653"
+        ]
+    ],
+    "expositionWeaves": [
+        {
+            "weaveTitle": "How to upload an audio recording",
+            "weaveTools": [
+                {
+                    "size": {
+                        "height": 401,
+                        "width": 643
+                    },
+                    "toolContent": {
+                        "tag": "VideoContent",
+                        "videoUrl": "https://media.researchcatalogue.net/rc/derivative/24/ac/10/0b/24ac100b74d65c7710f6c31480dba5d5.mp4?t=d89c4d02e3a61cd77588d89cacf07d83&e=1553083800"
+                    },
+                    "toolMediaFile": "media/249661.mp4",
+                    "toolId": "249661",
+                    "position": {
+                        "left": 52,
+                        "top": 263
+                    }
+                },
+                {
+                    "size": {
+                        "height": 148,
+                        "width": 615
+                    },
+                    "toolContent": {
+                        "tag": "AudioContent",
+                        "audioUrl": ""
+                    },
+                    "toolMediaFile": null,
+                    "toolId": "249654",
+                    "position": {
+                        "left": 53,
+                        "top": 82
+                    }
+                }
+            ],
+            "weaveUrl": "/view/249652/249653"
+        }
+    ],
+    "expositionMetaData": {
+        "metaKeywords": [
+            ""
+        ],
+        "metaDate": "07/02/2016",
+        "metaTitle": "How to upload an audio recording",
+        "metaExpMainUrl": "https://www.researchcatalogue.net/view/249652/249653",
+        "metaAuthors": [
+            "Casper Schipper"
+        ]
+    },
+    "expositionId": "249652"
+}

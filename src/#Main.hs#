@@ -92,7 +92,6 @@ data ToolContent
   = TextContent { textToolContent :: T.Text }
   | ImageContent { imageUrl :: T.Text }
   | VideoContent { videoUrl :: T.Text }
-  | AudioContent { audioUrl :: T.Text }
   deriving (Generic, Show)
 
 instance ToJSON (ToolContent)
@@ -173,14 +172,9 @@ videoContent cursor = VideoContent video
   where
     video = T.concat $ cursor $// attribute "data-file"
 
-audioContent :: Cursor Node -> ToolContent
-audioContent cursor = AudioContent audio 
-  where
-    audio = T.concat $ cursor $// element "video" >=> attribute "src"
-
 toolSpecs :: [ToolSpec]
 toolSpecs =
-  [("text", textContent), ("picture", imageContent), ("video", videoContent),("audio",audioContent)]
+  [("text", textContent), ("picture", imageContent), ("video", videoContent)]
 
 -- | Get tools of a certain type
 getTools :: ToolSpec -> Cursor Node -> [Tool]
