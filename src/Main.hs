@@ -174,13 +174,16 @@ videoContent cursor = VideoContent video
     video = T.concat $ cursor $// attribute "data-file"
 
 audioContent :: Cursor Node -> ToolContent
-audioContent cursor = AudioContent audio 
+audioContent cursor = AudioContent audio
   where
-    audio = T.concat $ cursor $// element "video" >=> attribute "src"
+    audio = T.concat $ cursor $// attribute "data-file"
+    -- lstinfo = T.pack $ show $cursor 
+    -- audio = T.concat $ cursor $// element "video" >=> attribute "src"
 
 toolSpecs :: [ToolSpec]
 toolSpecs =
-  [("text", textContent), ("picture", imageContent), ("video", videoContent),("audio",audioContent)]
+  [("text", textContent), ("simpletext", textContent), ("picture", imageContent), ("video", videoContent),("audio",audioContent)]
+
 
 -- | Get tools of a certain type
 getTools :: ToolSpec -> Cursor Node -> [Tool]
@@ -209,6 +212,7 @@ toolUrl tool =
   case toolContent tool of
     ImageContent url -> Just (T.unpack url)
     VideoContent url -> Just (T.unpack url)
+    AudioContent url -> Just (T.unpack url)
     _ -> Nothing
 
 toolFileExtension :: Tool -> Maybe String
