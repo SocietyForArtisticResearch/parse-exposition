@@ -1,91 +1,92 @@
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings     #-}
 
-import Control.Monad
-import Data.Aeson (FromJSON, ToJSON)
-import Data.Aeson.Encode.Pretty (encodePretty)
-import Data.Char (isSpace)
-import Data.Conduit ((.|), runConduitRes)
-import qualified Data.Conduit.Binary as CB
-import qualified Data.List as L
-import qualified Data.Map.Strict as M
-import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
-import Data.Text.Lazy (toStrict)
-import Data.Text.Lazy.Encoding (decodeUtf8)
-import Data.Text.Read (decimal)
-import GHC.Generics
-import Network.HTTP.Simple (getResponseBody, httpSink, httpSource, parseRequest)
-import System.Directory (createDirectory, doesDirectoryExist)
-import System.Environment
-import System.Exit
-import System.FilePath ((</>), takeExtension)
-import Text.Blaze.Html (toHtml)
-import Text.Blaze.Html.Renderer.Text (renderHtml)
-import Text.HTML.DOM (sinkDoc)
-import qualified Text.Pandoc as Pan
-import qualified Text.Pandoc.Options as PanOptions
-import Text.XML (Element(..), Name, Node(..))
-import Text.XML.Cursor
-  ( ($/)
-  , ($//)
-  , ($|)
-  , (&/)
-  , (&//)
-  , (&|)
-  , (>=>)
-  , attribute
-  , attributeIs
-  , check
-  , content
-  , element
-  , fromDocument
-  , hasAttribute
-  , parent
-  )
-import Text.XML.Cursor.Generic (Cursor(..), node, toCursor)
+import           Control.Monad
+import           Data.Aeson                    (FromJSON, ToJSON)
+import           Data.Aeson.Encode.Pretty      (encodePretty)
+import           Data.Char                     (isSpace)
+import           Data.Conduit                  (runConduitRes, (.|))
+import qualified Data.Conduit.Binary           as CB
+import qualified Data.List                     as L
+import qualified Data.Map.Strict               as M
+import qualified Data.Text                     as T
+import qualified Data.Text.IO                  as TIO
+import           Data.Text.Lazy                (toStrict)
+import           Data.Text.Lazy.Encoding       (decodeUtf8)
+import           Data.Text.Read                (decimal)
+import qualified Debug.Trace                   as Debug
+import           GHC.Generics
+import           Network.HTTP.Simple           (getResponseBody, httpSink,
+                                                httpSource, parseRequest)
+import           System.Directory              (createDirectory,
+                                                doesDirectoryExist)
+import           System.Environment
+import           System.Exit
+import           System.FilePath               (takeExtension, (</>))
+import           Text.Blaze.Html               (toHtml)
+import           Text.Blaze.Html.Renderer.Text (renderHtml)
+import           Text.HTML.DOM                 (sinkDoc)
+import qualified Text.Pandoc                   as Pan
+import qualified Text.Pandoc.Options           as PanOptions
+import           Text.XML                      (Element (..), Name, Node (..))
+import           Text.XML.Cursor               (attribute, attributeIs, check,
+                                                content, element, fromDocument,
+                                                hasAttribute, parent, ($/),
+                                                ($//), ($|), (&/), (&//), (&|),
+                                                (>=>))
+import           Text.XML.Cursor.Generic       (Cursor (..), node, toCursor)
 
 data Exposition = Exposition
-  { expositionToc :: [(T.Text, T.Text)]
-  , expositionId :: T.Text
+  { expositionToc      :: [(T.Text, T.Text)]
+  , expositionId       :: T.Text
   , expositionMetaData :: ExpositionMetaData
-  , expositionWeaves :: [Weave]
+  , expositionWeaves   :: [Weave]
   } deriving (Generic, Show)
 
-instance ToJSON (Exposition)
+instance ToJSON Exposition
 
 data Weave = Weave
-  { weaveTitle :: T.Text
-  , weaveUrl :: T.Text
-  , weaveTools :: [Tool]
+  { weaveTitle    :: T.Text
+  , weaveUrl      :: T.Text
+  , weaveTools    :: [Tool]
+  , weavePopovers :: [Popover]
   } deriving (Generic, Show)
 
-instance ToJSON (Weave)
+instance ToJSON Weave
+
+data Popover = Popover
+  { popoverId      :: T.Text
+  -- , popoverPosition :: Position
+  -- , popoverSize     :: Size
+  , popoverContent :: Weave
+  } deriving (Generic, Show)
+
+instance ToJSON Popover
 
 data Position = Position
   { left :: Maybe Int
-  , top :: Maybe Int
+  , top  :: Maybe Int
   } deriving (Generic, Show)
 
-instance ToJSON (Position)
+instance ToJSON Position
 
 data Size = Size
-  { width :: Maybe Int
+  { width  :: Maybe Int
   , height :: Maybe Int
   } deriving (Generic, Show)
 
-instance ToJSON (Size)
+instance ToJSON Size
 
 data Tool = Tool
   { toolMediaFile :: Maybe String
-  , toolId :: T.Text
-  , position :: Position
-  , size :: Size
-  , toolContent :: ToolContent
+  , toolId        :: T.Text
+  , position      :: Position
+  , size          :: Size
+  , toolContent   :: ToolContent
   } deriving (Generic, Show)
 
-instance ToJSON (Tool)
+instance ToJSON Tool
 
 -- | Content types to be extended
 data ToolContent
@@ -95,27 +96,27 @@ data ToolContent
   | AudioContent { audioUrl :: T.Text }
   deriving (Generic, Show)
 
-instance ToJSON (ToolContent)
+instance ToJSON ToolContent
 
 data ImportOptions = ImportOptions
   { markdown :: Bool
-  , expId :: String
+  , expId    :: String
   , download :: Maybe String
   }
 
 type ToolTypeName = T.Text
 
-type ToolSpec = (ToolTypeName, (Cursor Node -> ToolContent))
+type ToolSpec = (ToolTypeName, Cursor Node -> ToolContent)
 
 data ExpositionMetaData = ExpoMetaData
-  { metaTitle :: T.Text
-  , metaDate :: T.Text
-  , metaAuthors :: [T.Text]
-  , metaKeywords :: [T.Text]
+  { metaTitle      :: T.Text
+  , metaDate       :: T.Text
+  , metaAuthors    :: [T.Text]
+  , metaKeywords   :: [T.Text]
   , metaExpMainUrl :: T.Text
   } deriving (Generic, Show)
 
-instance ToJSON (ExpositionMetaData)
+instance ToJSON ExpositionMetaData
 
 -- | Encodes an object as strict json text
 encodeTxt :: ToJSON a => a -> T.Text
@@ -124,21 +125,21 @@ encodeTxt a = toStrict . decodeUtf8 $ encodePretty a
 -- | Checks if class attribute string contains a certain class
 checkClass :: T.Text -> Cursor Node -> Bool
 checkClass cls cursor =
-  case (node cursor) of
+  case node cursor of
     (NodeElement (Element _ attr _)) ->
       case M.lookup "class" attr of
         Just classes -> T.isInfixOf cls classes
-        _ -> False
+        _            -> False
     _ -> False
 
 -- | Get style property from a list of lists
 styleProperty :: T.Text -> [[T.Text]] -> Maybe Int
 styleProperty prop propLst =
-  case L.find (\propPair -> (head propPair) == prop) propLst of
+  case L.find (\propPair -> head propPair == prop) propLst of
     Just val ->
       case decimal $ second val of
         Right (num, _) -> Just num
-        _ -> Nothing
+        _              -> Nothing
     _ -> Nothing
   where
     second = head . tail
@@ -147,8 +148,7 @@ styleProperty prop propLst =
 extractSizePos :: [T.Text] -> ([Position], [Size])
 extractSizePos styles = (positions, sizes)
   where
-    assocStyles =
-      map (\style -> map (T.splitOn ":") $ T.splitOn ";" style) styles
+    assocStyles = map (map (T.splitOn ":") . T.splitOn ";") styles
     lefts = map (styleProperty "left") assocStyles
     tops = map (styleProperty "top") assocStyles
     positions = Position <$> lefts <*> tops
@@ -177,13 +177,17 @@ audioContent :: Cursor Node -> ToolContent
 audioContent cursor = AudioContent audio
   where
     audio = T.concat $ cursor $// attribute "data-file"
-    -- lstinfo = T.pack $ show $cursor 
+    -- lstinfo = T.pack $ show $cursor
     -- audio = T.concat $ cursor $// element "video" >=> attribute "src"
 
 toolSpecs :: [ToolSpec]
 toolSpecs =
-  [("text", textContent), ("simpletext", textContent), ("picture", imageContent), ("video", videoContent),("audio",audioContent)]
-
+  [ ("text", textContent)
+  , ("simpletext", textContent)
+  , ("picture", imageContent)
+  , ("video", videoContent)
+  , ("audio", audioContent)
+  ]
 
 -- | Get tools of a certain type
 getTools :: ToolSpec -> Cursor Node -> [Tool]
@@ -204,7 +208,7 @@ getTools (toolTypeName, contentFun) cursor =
 --------------------
 downloadFile :: String -> String -> IO ()
 downloadFile url fname = do
-  req <- (parseRequest url)
+  req <- parseRequest url
   runConduitRes $ httpSource req getResponseBody .| CB.sinkFile fname
 
 toolUrl :: Tool -> Maybe String
@@ -213,16 +217,16 @@ toolUrl tool =
     ImageContent url -> Just (T.unpack url)
     VideoContent url -> Just (T.unpack url)
     AudioContent url -> Just (T.unpack url)
-    _ -> Nothing
+    _                -> Nothing
 
 toolFileExtension :: Tool -> Maybe String
 toolFileExtension tool =
-  let fname url = Just $ (takeWhile (/= '?') $ takeExtension url)
+  let fname url = Just $ takeWhile (/= '?') (takeExtension url)
    in fname =<< toolUrl tool
 
 toolFileName :: Tool -> String -> Maybe String
 toolFileName tool dir =
-  (\ending -> dir </> (T.unpack $ toolId tool) ++ ending) <$>
+  (\ending -> dir </> T.unpack (toolId tool) ++ ending) <$>
   toolFileExtension tool
 
 downloadTool :: String -> Tool -> IO ()
@@ -230,25 +234,39 @@ downloadTool dir tool =
   let fileName = toolFileName tool dir
       url = toolUrl tool
    in case (fileName, url) of
-        (Just fnameStr, Just urlStr) -> do
-          downloadFile urlStr fnameStr
-        _ -> do
-          return ()
+        (Just fnameStr, Just urlStr) -> downloadFile urlStr fnameStr
+        _                            -> return ()
 
 downloadTools :: ImportOptions -> Exposition -> IO ()
 downloadTools options exposition =
-  let tools = L.concat $ map weaveTools (expositionWeaves exposition)
+  let tools = concatMap weaveTools (expositionWeaves exposition)
    in case download options of
-        Nothing -> do
-          return ()
+        Nothing -> return ()
         Just dir -> do
           exists <- doesDirectoryExist dir
-          if not exists
-            then createDirectory dir
-            else return ()
-          mapM (downloadTool dir) tools
-          return ()
+          when (not exists) $ createDirectory dir
+          mapM_ (downloadTool dir) tools
 
+--------------------
+--- Popovers
+--------------------
+popoverUrl :: String -> String -> String
+popoverUrl expoId popId = "/view/popover/" ++ expoId ++ "/" ++ popId
+
+getPopovers :: String -> Cursor Node -> IO [Popover]
+getPopovers expoId cursor = L.zipWith Popover ids <$> content
+  where
+    ids = cursor $// element "a" >=> attribute "data-popover"
+    content =
+      traverse
+        (\u ->
+           getWeave
+             expoId
+             ("popover", (T.pack (popoverUrl expoId (T.unpack u)))))
+        ids
+
+--  Debug.trace ("ids " ++ show ids)
+--    popovers = cursor &// element "iframe"
 --------------------
 --- Markdown conversion
 --------------------
@@ -291,19 +309,26 @@ insertFileNames options exp =
                   toolsFname
             }
 
-getWeave :: (T.Text, T.Text) -> IO Weave
-getWeave (title, url) = do
+getWeave :: String -> (T.Text, T.Text) -> IO Weave
+getWeave id (title, url) = do
   req <- parseRequest $ "https://www.researchcatalogue.net" <> T.unpack url
   doc <- httpSink req $ const sinkDoc
   let cursor = fromDocument doc
-  let tools = L.concat $ map (\spec -> getTools spec cursor) toolSpecs
-  return $ Weave {weaveTitle = title, weaveUrl = url, weaveTools = tools}
+  let tools = concatMap (\spec -> getTools spec cursor) toolSpecs
+  popovers <- getPopovers id cursor
+  return $
+    Weave
+      { weaveTitle = title
+      , weaveUrl = url
+      , weaveTools = tools
+      , weavePopovers = popovers
+      }
 
-parseExposition :: T.Text -> ExpositionMetaData -> Cursor Node -> IO Exposition
+parseExposition :: String -> ExpositionMetaData -> Cursor Node -> IO Exposition
 parseExposition id metadata cursor = do
   let expToc = toc cursor
-  weaves <- mapM getWeave expToc
-  return $ Exposition expToc id metadata weaves
+  weaves <- mapM (getWeave id) expToc
+  return $ Exposition expToc (T.pack id) metadata weaves
 
 toc :: Cursor Node -> [(T.Text, T.Text)]
 toc cursor =
@@ -323,7 +348,7 @@ getExposition :: ImportOptions -> ExpositionMetaData -> IO Exposition
 getExposition options metadata = do
   req <- parseRequest $ T.unpack (metaExpMainUrl metadata)
   doc <- httpSink req $ const sinkDoc
-  exp <- parseExposition (T.pack (expId options)) metadata (fromDocument doc)
+  exp <- parseExposition (expId options) metadata (fromDocument doc)
   return $ insertFileNames options exp
 
 detailsUrl :: String -> String
@@ -335,7 +360,7 @@ trim :: T.Text -> T.Text
 trim = T.dropWhileEnd isSpace . T.dropWhile isSpace
 
 unwrapTxt :: Maybe T.Text -> T.Text
-unwrapTxt Nothing = ""
+unwrapTxt Nothing    = ""
 unwrapTxt (Just txt) = txt
 
 parseDetailsPage :: Cursor Node -> ExpositionMetaData
@@ -383,7 +408,7 @@ parseArgs args = makeOptions args (ImportOptions False "" Nothing)
 
 usage = putStrLn "Usage: parse-exposition [-m] [-d] exposition-id"
 
-exit = exitWith ExitSuccess
+exit = exitSuccess
 
 expToTxt :: Pan.PandocMonad m => m Exposition -> m T.Text
 expToTxt exp = encodeTxt <$> exp
