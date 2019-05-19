@@ -14,6 +14,7 @@ The program outputs JSON data on standard out and downloads media into a "media"
 
 ## Options
 * `-m` for markdown conversion
+* `-epub` for epub conversion (EPUB version 3)
 * `-d` for download of media files (into "./media" folder)
 
 ```stack build --exec "parse-exposition -d -m 384876"```

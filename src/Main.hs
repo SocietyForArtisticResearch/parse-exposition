@@ -3,8 +3,11 @@
 {-# LANGUAGE OverloadedStrings     #-}
 
 import           Control.Monad
+import           Control.Monad.Trans           (lift)
 import           Data.Aeson                    (FromJSON, ToJSON)
 import           Data.Aeson.Encode.Pretty      (encodePretty)
+
+import qualified Data.ByteString.Lazy          as ByteString
 import           Data.Char                     (isSpace)
 import           Data.Conduit                  (runConduitRes, (.|))
 import qualified Data.Conduit.Binary           as CB
@@ -67,14 +70,14 @@ instance ToJSON Popover
 data Position = Position
   { left :: Maybe Int
   , top  :: Maybe Int
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 instance ToJSON Position
 
 data Size = Size
   { width  :: Maybe Int
   , height :: Maybe Int
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 instance ToJSON Size
 
@@ -84,9 +87,22 @@ data Tool = Tool
   , position      :: Position
   , size          :: Size
   , toolContent   :: ToolContent
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 instance ToJSON Tool
+
+instance Ord Tool where
+  compare t1 t2 =
+    let p1 = position t1
+        p2 = position t2
+     in case (left p1, top p1, left p2, top p2) of
+          (Just l1, Just t1, Just l2, Just t2)
+            | l1 == l2 -> compare t1 t2
+          (Nothing, Nothing, Nothing, Nothing) -> EQ
+          (Nothing, Nothing, _, _) -> GT
+          (_, _, Nothing, Nothing) -> LT
+          (Nothing, Just t1, Nothing, Just t2) -> compare t1 t2
+          (Just l1, _, Just l2, _) -> compare l1 l2
 
 -- | Content types to be extended
 data ToolContent
@@ -94,12 +110,13 @@ data ToolContent
   | ImageContent { imageUrl :: T.Text }
   | VideoContent { videoUrl :: T.Text }
   | AudioContent { audioUrl :: T.Text }
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq)
 
 instance ToJSON ToolContent
 
 data ImportOptions = ImportOptions
   { markdown :: Bool
+  , epub     :: Bool
   , expId    :: String
   , download :: Maybe String
   }
@@ -265,8 +282,6 @@ getPopovers expoId cursor = L.zipWith Popover ids <$> content
              ("popover", (T.pack (popoverUrl expoId (T.unpack u)))))
         ids
 
---  Debug.trace ("ids " ++ show ids)
---    popovers = cursor &// element "iframe"
 --------------------
 --- Markdown conversion
 --------------------
@@ -288,6 +303,26 @@ expToMarkdown exp = do
       { expositionWeaves =
           zipWith (\w t -> w {weaveTools = t}) (expositionWeaves exp) mdTools
       }
+
+--------------------
+--- EPub3 conversion
+--------------------
+toolToEPubMd :: Pan.PandocMonad m => ToolContent -> m Pan.Pandoc
+toolToEPubMd (TextContent txt) = Pan.readHtml PanOptions.def txt
+toolToEPubMd (ImageContent img) =
+  Pan.readMarkdown PanOptions.def ("\n![](" <> img <> ")\n")
+toolToEPubMd (AudioContent url) =
+  Pan.readMarkdown PanOptions.def ("\n![" <> url <> "](" <> url <> ")\n")
+toolToEPubMd (VideoContent url) =
+  Pan.readMarkdown PanOptions.def ("\n![" <> url <> "](" <> url <> ")\n")
+
+expToEPub :: Pan.PandocMonad m => Exposition -> m ByteString.ByteString
+expToEPub exp = do
+  let sortedTools =
+        map toolContent $
+        concat $ map (L.sort . weaveTools) (expositionWeaves exp)
+  pan <- fmap mconcat $ traverse toolToEPubMd sortedTools
+  Pan.writeEPUB3 PanOptions.def pan
 
 --------------------
 --- Main functions
@@ -397,16 +432,17 @@ getDetailsPageData options = do
   return $ parseDetailsPage (fromDocument doc)
 
 parseArgs :: [String] -> ImportOptions
-parseArgs args = makeOptions args (ImportOptions False "" Nothing)
+parseArgs args = makeOptions args (ImportOptions False False "" Nothing)
   where
     makeOptions :: [String] -> ImportOptions -> ImportOptions
+    makeOptions ("-epub":t) options = makeOptions t (options {epub = True})
     makeOptions ("-m":t) options = makeOptions t (options {markdown = True})
     makeOptions ("-d":t) options =
       makeOptions t (options {download = Just "media"})
     makeOptions (id:t) options = makeOptions t (options {expId = id})
     makeOptions [] options = options
 
-usage = putStrLn "Usage: parse-exposition [-m] [-d] exposition-id"
+usage = putStrLn "Usage: parse-exposition [-epub] [-m] [-d] exposition-id"
 
 exit = exitSuccess
 
@@ -426,3 +462,8 @@ main = do
   if markdown options
     then TIO.putStrLn =<< encodeMdTxt exp
     else TIO.putStrLn $ encodeTxt exp
+  if (epub options)
+    then do
+      epubBs <- Pan.runIOorExplode $ expToEPub exp
+      ByteString.writeFile "export.epub" $ epubBs
+    else return ()
