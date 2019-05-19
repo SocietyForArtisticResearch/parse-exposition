@@ -3,7 +3,6 @@
 {-# LANGUAGE OverloadedStrings     #-}
 
 import           Control.Monad
-import           Control.Monad.Trans           (lift)
 import           Data.Aeson                    (FromJSON, ToJSON)
 import           Data.Aeson.Encode.Pretty      (encodePretty)
 
