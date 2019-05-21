@@ -5,6 +5,7 @@
 import           Control.Monad
 import           Data.Aeson                    (FromJSON, ToJSON)
 import           Data.Aeson.Encode.Pretty      (encodePretty)
+import qualified Data.Map.Strict               as Map
 
 import qualified Data.ByteString.Lazy          as ByteString
 import           Data.Char                     (isSpace)
@@ -114,10 +115,11 @@ data ToolContent
 instance ToJSON ToolContent
 
 data ImportOptions = ImportOptions
-  { markdown :: Bool
-  , epub     :: Bool
-  , expId    :: String
-  , download :: Maybe String
+  { markdown      :: Bool -- convert content of text tools
+  , writeMarkdown :: Bool -- for output
+  , epub          :: Bool
+  , expId         :: String
+  , download      :: Maybe String
   }
 
 type ToolTypeName = T.Text
@@ -294,8 +296,8 @@ toolToMarkdown tool =
     _ -> do
       return tool
 
-expToMarkdown :: Pan.PandocMonad m => Exposition -> m Exposition
-expToMarkdown exp = do
+textToolsToMarkdown :: Pan.PandocMonad m => Exposition -> m Exposition
+textToolsToMarkdown exp = do
   mdTools <- mapM (mapM toolToMarkdown) (map weaveTools (expositionWeaves exp))
   return $
     exp
@@ -304,24 +306,99 @@ expToMarkdown exp = do
       }
 
 --------------------
+--- Adding Metadata
+--------------------
+addMetaString :: Pan.Pandoc -> String -> String -> Pan.Pandoc
+addMetaString (Pan.Pandoc (Pan.Meta meta) blocks) key value =
+  Pan.Pandoc newMeta blocks
+  where
+    newMeta = Pan.Meta $ Map.insert key (Pan.MetaString value) meta
+
+addMetaStringList :: Pan.Pandoc -> String -> [String] -> Pan.Pandoc
+addMetaStringList (Pan.Pandoc (Pan.Meta meta) blocks) key values =
+  Pan.Pandoc newMeta blocks
+  where
+    newMeta =
+      Pan.Meta $ Map.insert key (Pan.MetaList $ map Pan.MetaString values) meta
+
+--------------------
 --- EPub3 conversion
 --------------------
-toolToEPubMd :: Pan.PandocMonad m => ToolContent -> m Pan.Pandoc
-toolToEPubMd (TextContent txt) = Pan.readHtml PanOptions.def txt
-toolToEPubMd (ImageContent img) =
+toolToMd :: Pan.PandocMonad m => ToolContent -> m Pan.Pandoc
+toolToMd (TextContent txt) = Pan.readHtml PanOptions.def txt
+toolToMd (ImageContent img) =
   Pan.readMarkdown PanOptions.def ("\n![](" <> img <> ")\n")
-toolToEPubMd (AudioContent url) =
+toolToMd (AudioContent url) =
   Pan.readMarkdown PanOptions.def ("\n![" <> url <> "](" <> url <> ")\n")
-toolToEPubMd (VideoContent url) =
+toolToMd (VideoContent url) =
   Pan.readMarkdown PanOptions.def ("\n![" <> url <> "](" <> url <> ")\n")
 
-expToEPub :: Pan.PandocMonad m => Exposition -> m ByteString.ByteString
-expToEPub exp = do
+lastN :: Int -> [a] -> [a]
+lastN n xs = drop (length xs - n) xs
+
+expToEPub ::
+     Pan.PandocMonad m
+  => Exposition
+  -> ExpositionMetaData
+  -> m ByteString.ByteString
+expToEPub exp meta = do
   let sortedTools =
         map toolContent $
         concat $ map (L.sort . weaveTools) (expositionWeaves exp)
-  pan <- fmap mconcat $ traverse toolToEPubMd sortedTools
-  Pan.writeEPUB3 PanOptions.def pan
+  pan <- fmap mconcat $ traverse toolToMd sortedTools
+  template <- Pan.getDefaultTemplate "epub"
+  let year = lastN 4 (T.unpack $ metaDate meta)
+  Pan.writeEPUB3
+    (PanOptions.def
+       { Pan.writerVariables = [("coverpage", "true"), ("titlepage", "true")]
+       , Pan.writerTemplate = Just template
+       })
+    (addMetaString
+       (addMetaStringList
+          (addMetaString pan "title" (T.unpack $ metaTitle meta))
+          "creator"
+          (map T.unpack $ metaAuthors meta))
+       "date"
+       year)
+
+--------------------
+--- Markdown conversion
+--------------------
+mkYamlHeader :: ExpositionMetaData -> T.Text
+mkYamlHeader meta =
+  T.unlines $
+  [ "---"
+  , "title:"
+  , "- type: main"
+  , "  text: \"" <> metaTitle meta <> "\""
+  , "creator:"
+  ] ++
+  authors ++ ["..."]
+  where
+    authors =
+      mconcat $
+      map
+        (\author -> ["- role: author", "  text: \"" <> author <> "\""])
+        (metaAuthors meta)
+
+expToMarkdown ::
+     Pan.PandocMonad m => Exposition -> ExpositionMetaData -> m T.Text
+expToMarkdown exp meta = do
+  let sortedTools =
+        map toolContent $
+        concat $ map (L.sort . weaveTools) (expositionWeaves exp)
+  pan <- fmap mconcat $ traverse toolToMd sortedTools
+  template <- Pan.getDefaultTemplate "epub"
+  let year = lastN 4 (T.unpack $ metaDate meta)
+  Pan.writeMarkdown
+    PanOptions.def
+    (addMetaString
+       (addMetaStringList
+          (addMetaString pan "title" (T.unpack $ metaTitle meta))
+          "creator"
+          (map T.unpack $ metaAuthors meta))
+       "date"
+       year)
 
 --------------------
 --- Main functions
@@ -431,17 +508,21 @@ getDetailsPageData options = do
   return $ parseDetailsPage (fromDocument doc)
 
 parseArgs :: [String] -> ImportOptions
-parseArgs args = makeOptions args (ImportOptions False False "" Nothing)
+parseArgs args = makeOptions args (ImportOptions False False False "" Nothing)
   where
     makeOptions :: [String] -> ImportOptions -> ImportOptions
     makeOptions ("-epub":t) options = makeOptions t (options {epub = True})
-    makeOptions ("-m":t) options = makeOptions t (options {markdown = True})
+    makeOptions ("-md":t) options =
+      makeOptions t (options {writeMarkdown = True})
+    makeOptions ("-textmd":t) options =
+      makeOptions t (options {markdown = True})
     makeOptions ("-d":t) options =
       makeOptions t (options {download = Just "media"})
     makeOptions (id:t) options = makeOptions t (options {expId = id})
     makeOptions [] options = options
 
-usage = putStrLn "Usage: parse-exposition [-epub] [-m] [-d] exposition-id"
+usage =
+  putStrLn "Usage: parse-exposition [-epub] [-textmd] [-md] [-d] exposition-id"
 
 exit = exitSuccess
 
@@ -449,7 +530,7 @@ expToTxt :: Pan.PandocMonad m => m Exposition -> m T.Text
 expToTxt exp = encodeTxt <$> exp
 
 encodeMdTxt :: Exposition -> IO T.Text
-encodeMdTxt exp = Pan.runIOorExplode $ expToTxt (expToMarkdown exp)
+encodeMdTxt exp = Pan.runIOorExplode $ expToTxt (textToolsToMarkdown exp)
 
 main :: IO ()
 main = do
@@ -463,6 +544,11 @@ main = do
     else TIO.putStrLn $ encodeTxt exp
   if (epub options)
     then do
-      epubBs <- Pan.runIOorExplode $ expToEPub exp
+      epubBs <- Pan.runIOorExplode $ expToEPub exp details
       ByteString.writeFile "export.epub" $ epubBs
+    else return ()
+  if (writeMarkdown options)
+    then do
+      md <- Pan.runIOorExplode $ expToMarkdown exp details
+      TIO.writeFile "export.md" $ (mkYamlHeader details) <> md
     else return ()
