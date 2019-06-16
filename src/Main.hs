@@ -20,10 +20,8 @@ import           Data.Text.Lazy.Encoding       (decodeUtf8)
 import           Data.Text.Read                (decimal)
 import qualified Debug.Trace                   as Debug
 import           GHC.Generics
-import           Network.HTTP.Simple           (getResponseBody, httpSink,
-                                                httpSource, parseRequest)
-import           System.Directory              (createDirectory,
-                                                doesDirectoryExist)
+import           Network.HTTP.Simple           (getResponseBody, httpSink, httpSource, parseRequest)
+import           System.Directory              (createDirectory, doesDirectoryExist)
 import           System.Environment
 import           System.Exit
 import           System.FilePath               (takeExtension, (</>))
@@ -33,61 +31,70 @@ import           Text.HTML.DOM                 (sinkDoc)
 import qualified Text.Pandoc                   as Pan
 import qualified Text.Pandoc.Options           as PanOptions
 import           Text.XML                      (Element (..), Name, Node (..))
-import           Text.XML.Cursor               (attribute, attributeIs, check,
-                                                content, element, fromDocument,
-                                                hasAttribute, parent, ($/),
-                                                ($//), ($|), (&/), (&//), (&|),
-                                                (>=>))
+import           Text.XML.Cursor               (attribute, attributeIs, check, content, element, fromDocument,
+                                                hasAttribute, parent, ($/), ($//), ($|), (&/), (&//), (&|), (>=>))
 import           Text.XML.Cursor.Generic       (Cursor (..), node, toCursor)
 
-data Exposition = Exposition
-  { expositionToc      :: [(T.Text, T.Text)]
-  , expositionId       :: T.Text
-  , expositionMetaData :: ExpositionMetaData
-  , expositionWeaves   :: [Weave]
-  } deriving (Generic, Show)
+data Exposition =
+  Exposition
+    { expositionToc      :: [(T.Text, T.Text)]
+    , expositionId       :: T.Text
+    , expositionMetaData :: ExpositionMetaData
+    , expositionWeaves   :: [Weave]
+    }
+  deriving (Generic, Show)
 
 instance ToJSON Exposition
 
-data Weave = Weave
-  { weaveTitle    :: T.Text
-  , weaveUrl      :: T.Text
-  , weaveTools    :: [Tool]
-  , weavePopovers :: [Popover]
-  } deriving (Generic, Show)
+data Weave =
+  Weave
+    { weaveTitle    :: T.Text
+    , weaveUrl      :: T.Text
+    , weaveTools    :: [Tool]
+    , weavePopovers :: [Popover]
+    }
+  deriving (Generic, Show)
 
 instance ToJSON Weave
 
-data Popover = Popover
-  { popoverId      :: T.Text
+data Popover =
+  Popover
+    { popoverId      :: T.Text
   -- , popoverPosition :: Position
   -- , popoverSize     :: Size
-  , popoverContent :: Weave
-  } deriving (Generic, Show)
+    , popoverContent :: Weave
+    }
+  deriving (Generic, Show)
 
 instance ToJSON Popover
 
-data Position = Position
-  { left :: Maybe Int
-  , top  :: Maybe Int
-  } deriving (Generic, Show, Eq)
+data Position =
+  Position
+    { left :: Maybe Int
+    , top  :: Maybe Int
+    }
+  deriving (Generic, Show, Eq)
 
 instance ToJSON Position
 
-data Size = Size
-  { width  :: Maybe Int
-  , height :: Maybe Int
-  } deriving (Generic, Show, Eq)
+data Size =
+  Size
+    { width  :: Maybe Int
+    , height :: Maybe Int
+    }
+  deriving (Generic, Show, Eq)
 
 instance ToJSON Size
 
-data Tool = Tool
-  { toolMediaFile :: Maybe String
-  , toolId        :: T.Text
-  , position      :: Position
-  , size          :: Size
-  , toolContent   :: ToolContent
-  } deriving (Generic, Show, Eq)
+data Tool =
+  Tool
+    { toolMediaFile :: Maybe String
+    , toolId        :: T.Text
+    , position      :: Position
+    , size          :: Size
+    , toolContent   :: ToolContent
+    }
+  deriving (Generic, Show, Eq)
 
 instance ToJSON Tool
 
@@ -106,33 +113,44 @@ instance Ord Tool where
 
 -- | Content types to be extended
 data ToolContent
-  = TextContent { textToolContent :: T.Text }
-  | ImageContent { imageUrl :: T.Text }
-  | VideoContent { videoUrl :: T.Text }
-  | AudioContent { audioUrl :: T.Text }
+  = TextContent
+      { textToolContent :: T.Text
+      }
+  | ImageContent
+      { imageUrl :: T.Text
+      }
+  | VideoContent
+      { videoUrl :: T.Text
+      }
+  | AudioContent
+      { audioUrl :: T.Text
+      }
   deriving (Generic, Show, Eq)
 
 instance ToJSON ToolContent
 
-data ImportOptions = ImportOptions
-  { markdown      :: Bool -- convert content of text tools
-  , writeMarkdown :: Bool -- for output
-  , epub          :: Bool
-  , expId         :: String
-  , download      :: Maybe String
-  }
+data ImportOptions =
+  ImportOptions
+    { markdown      :: Bool -- convert content of text tools
+    , writeMarkdown :: Bool -- for output
+    , epub          :: Bool
+    , expId         :: String
+    , download      :: Maybe String
+    }
 
 type ToolTypeName = T.Text
 
 type ToolSpec = (ToolTypeName, Cursor Node -> ToolContent)
 
-data ExpositionMetaData = ExpoMetaData
-  { metaTitle      :: T.Text
-  , metaDate       :: T.Text
-  , metaAuthors    :: [T.Text]
-  , metaKeywords   :: [T.Text]
-  , metaExpMainUrl :: T.Text
-  } deriving (Generic, Show)
+data ExpositionMetaData =
+  ExpoMetaData
+    { metaTitle      :: T.Text
+    , metaDate       :: T.Text
+    , metaAuthors    :: [T.Text]
+    , metaKeywords   :: [T.Text]
+    , metaExpMainUrl :: T.Text
+    }
+  deriving (Generic, Show)
 
 instance ToJSON ExpositionMetaData
 
@@ -169,10 +187,10 @@ extractSizePos styles = (positions, sizes)
     assocStyles = map (map (T.splitOn ":") . T.splitOn ";") styles
     lefts = map (styleProperty "left") assocStyles
     tops = map (styleProperty "top") assocStyles
-    positions = Position <$> lefts <*> tops
+    positions = zipWith Position lefts tops
     widths = map (styleProperty "width") assocStyles
     heights = map (styleProperty "height") assocStyles
-    sizes = Size <$> widths <*> heights
+    sizes = zipWith Size widths heights
 
 --------------------
 --- Specification of tool functions
@@ -209,8 +227,10 @@ toolSpecs =
 
 -- | Get tools of a certain type
 getTools :: ToolSpec -> Cursor Node -> [Tool]
-getTools (toolTypeName, contentFun) cursor =
-  L.zipWith4 (Tool Nothing) ids positions sizes toolContent
+getTools (toolTypeName, contentFun) cursor
+  -- Debug.trace
+  --   (show toolTypeName ++ show ids ++ show styles)
+ = L.zipWith4 (Tool Nothing) ids positions sizes toolContent
   where
     tools = cursor $// attributeIs "data-tool" toolTypeName
     ids = map (T.concat . attribute "data-id") tools
@@ -552,3 +572,17 @@ main = do
       md <- Pan.runIOorExplode $ expToMarkdown exp details
       TIO.writeFile "export.md" $ (mkYamlHeader details) <> md
     else return ()
+
+sizes :: [T.Text]
+sizes =
+  [ "left:650px;top:320px;width:250px;height:200px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:2;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
+  , "left:650px;top:580px;width:250px;height:250px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:5;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
+  , "left:650px;top:900px;width:250px;height:349px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:6;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
+  , "left:650px;top:1315px;width:250px;height:169px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:10;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
+  , "left:949px;top:888px;width:251px;height:225px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:13;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
+  , "left:950px;top:320px;width:250px;height:200px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:4;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
+  , "left:950px;top:630px;width:250px;height:200px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:7;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
+  , "left:950px;top:900px;width:250px;height:81px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:8;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
+  , "left:950px;top:1168px;width:250px;height:81px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:9;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
+  , "left:950px;top:1315px;width:126px;height:378px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:11;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
+  ]
