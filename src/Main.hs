@@ -344,8 +344,20 @@ addMetaStringList (Pan.Pandoc (Pan.Meta meta) blocks) key values =
 --------------------
 --- EPub3 conversion
 --------------------
+mdReaderOptions =
+  (PanOptions.def
+     { PanOptions.readerExtensions =
+         PanOptions.extensionsFromList [PanOptions.Ext_multiline_tables]
+     })
+
+mdWriterOptions =
+  (PanOptions.def
+     { PanOptions.writerExtensions =
+         PanOptions.extensionsFromList [PanOptions.Ext_multiline_tables]
+     })
+
 toolToMd :: Pan.PandocMonad m => ToolContent -> m Pan.Pandoc
-toolToMd (TextContent txt) = Pan.readHtml PanOptions.def txt
+toolToMd (TextContent txt) = Pan.readHtml mdReaderOptions txt
 toolToMd (ImageContent img) =
   Pan.readMarkdown PanOptions.def ("\n![](" <> img <> ")\n")
 toolToMd (AudioContent url) =
@@ -408,10 +420,10 @@ expToMarkdown exp meta = do
         map toolContent $
         concat $ map (L.sort . weaveTools) (expositionWeaves exp)
   pan <- fmap mconcat $ traverse toolToMd sortedTools
-  template <- Pan.getDefaultTemplate "epub"
+  template <- Pan.getDefaultTemplate "markdown"
   let year = lastN 4 (T.unpack $ metaDate meta)
   Pan.writeMarkdown
-    PanOptions.def
+    mdWriterOptions
     (addMetaString
        (addMetaStringList
           (addMetaString pan "title" (T.unpack $ metaTitle meta))
@@ -572,17 +584,3 @@ main = do
       md <- Pan.runIOorExplode $ expToMarkdown exp details
       TIO.writeFile "export.md" $ (mkYamlHeader details) <> md
     else return ()
-
-sizes :: [T.Text]
-sizes =
-  [ "left:650px;top:320px;width:250px;height:200px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:2;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
-  , "left:650px;top:580px;width:250px;height:250px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:5;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
-  , "left:650px;top:900px;width:250px;height:349px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:6;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
-  , "left:650px;top:1315px;width:250px;height:169px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:10;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
-  , "left:949px;top:888px;width:251px;height:225px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:13;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
-  , "left:950px;top:320px;width:250px;height:200px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:4;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
-  , "left:950px;top:630px;width:250px;height:200px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:7;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
-  , "left:950px;top:900px;width:250px;height:81px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:8;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
-  , "left:950px;top:1168px;width:250px;height:81px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:9;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
-  , "left:950px;top:1315px;width:126px;height:378px;padding-top:0px;padding-right:0px;padding-bottom:0px;padding-left:0px;border-width:0px;border-style:none;border-radius:0px;box-shadow:0px 0px 0px ;z-index:11;background-position:left top;background-repeat:repeat;background-size:auto;transform:rotate(0deg);-moz-transform:rotate(0deg);-webkit-transform:rotate(0deg);-o-transform:rotate(0deg);-ms-transform:rotate(0deg)"
-  ]

@@ -13,11 +13,7 @@ The program outputs JSON data on standard out and downloads media into a "media"
 ```stack build --exec "parse-exposition 343349"```
 
 ## Options
-* `-m` for markdown conversion
-* `-epub` for epub conversion (EPUB version 3)
-* `-d` for download of media files (into "./media" folder)
-
-```stack build --exec "parse-exposition -d -m 384876"```
+ Usage: ```parse-exposition [-epub] [-textmd] [-md] [-d] exposition-id```
 
 
 ## Run only
