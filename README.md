@@ -25,6 +25,7 @@ First build the program once. `xelatex` is a requirement.
 ```$ ./export2pdf.sh <expositionId>```
 
 ## TODO and Ideas
+* Don't download audio and video when exporting to latex
 * Deal with links within the exposition, position and weave
 * Deal with popovers
 * Conversion to svg (perhaps in elm)
