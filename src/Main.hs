@@ -1,46 +1,62 @@
-{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-import           Control.Monad
-import           Data.Aeson                    (FromJSON, ToJSON)
-import           Data.Aeson.Encode.Pretty      (encodePretty)
-import qualified Data.Map.Strict               as Map
+import Control.Monad
+import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson.Encode.Pretty (encodePretty)
+import qualified Data.Map.Strict as Map
 
-import qualified Data.ByteString.Lazy          as ByteString
-import           Data.Char                     (isSpace)
-import           Data.Conduit                  (runConduitRes, (.|))
-import qualified Data.Conduit.Binary           as CB
-import qualified Data.List                     as L
-import qualified Data.Map.Strict               as M
-import qualified Data.Text                     as T
-import qualified Data.Text.IO                  as TIO
-import           Data.Text.Lazy                (toStrict)
-import           Data.Text.Lazy.Encoding       (decodeUtf8)
-import           Data.Text.Read                (decimal)
-import qualified Debug.Trace                   as Debug
-import           GHC.Generics
-import           Network.HTTP.Simple           (getResponseBody, httpSink, httpSource, parseRequest)
-import           System.Directory              (createDirectory, doesDirectoryExist)
-import           System.Environment
-import           System.Exit
-import           System.FilePath               (takeExtension, (</>))
-import           Text.Blaze.Html               (toHtml)
-import           Text.Blaze.Html.Renderer.Text (renderHtml)
-import           Text.HTML.DOM                 (sinkDoc)
-import qualified Text.Pandoc                   as Pan
-import qualified Text.Pandoc.Options           as PanOptions
-import           Text.XML                      (Element (..), Name, Node (..))
-import           Text.XML.Cursor               (attribute, attributeIs, check, content, element, fromDocument,
-                                                hasAttribute, parent, ($/), ($//), ($|), (&/), (&//), (&|), (>=>))
-import           Text.XML.Cursor.Generic       (Cursor (..), node, toCursor)
+import qualified Data.ByteString.Lazy as ByteString
+import Data.Char (isSpace)
+import Data.Conduit ((.|), runConduitRes)
+import qualified Data.Conduit.Binary as CB
+import qualified Data.List as L
+import qualified Data.Map.Strict as M
+import Data.Maybe (catMaybes, fromMaybe)
+import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
+import Data.Text.Lazy (toStrict)
+import Data.Text.Lazy.Encoding (decodeUtf8)
+import Data.Text.Read (decimal)
+import qualified Debug.Trace as Debug
+import GHC.Generics
+import Network.HTTP.Simple (getResponseBody, httpSink, httpSource, parseRequest)
+import System.Directory (createDirectory, doesDirectoryExist)
+import System.Environment
+import System.Exit
+import System.FilePath ((</>), takeExtension)
+import Text.Blaze.Html (toHtml)
+import Text.Blaze.Html.Renderer.Text (renderHtml)
+import Text.HTML.DOM (sinkDoc)
+import qualified Text.Pandoc as Pan
+import qualified Text.Pandoc.Options as PanOptions
+import Text.XML (Element(..), Name, Node(..))
+import Text.XML.Cursor
+  ( ($/)
+  , ($//)
+  , ($|)
+  , (&/)
+  , (&//)
+  , (&|)
+  , (>=>)
+  , attribute
+  , attributeIs
+  , check
+  , content
+  , element
+  , fromDocument
+  , hasAttribute
+  , parent
+  )
+import Text.XML.Cursor.Generic (Cursor(..), node, toCursor)
 
 data Exposition =
   Exposition
-    { expositionToc      :: [(T.Text, T.Text)]
-    , expositionId       :: T.Text
+    { expositionToc :: [(T.Text, T.Text)]
+    , expositionId :: T.Text
     , expositionMetaData :: ExpositionMetaData
-    , expositionWeaves   :: [Weave]
+    , expositionWeaves :: [Weave]
     }
   deriving (Generic, Show)
 
@@ -48,9 +64,9 @@ instance ToJSON Exposition
 
 data Weave =
   Weave
-    { weaveTitle    :: T.Text
-    , weaveUrl      :: T.Text
-    , weaveTools    :: [Tool]
+    { weaveTitle :: T.Text
+    , weaveUrl :: T.Text
+    , weaveTools :: [Tool]
     , weavePopovers :: [Popover]
     }
   deriving (Generic, Show)
@@ -59,7 +75,7 @@ instance ToJSON Weave
 
 data Popover =
   Popover
-    { popoverId      :: T.Text
+    { popoverId :: T.Text
   -- , popoverPosition :: Position
   -- , popoverSize     :: Size
     , popoverContent :: Weave
@@ -71,7 +87,7 @@ instance ToJSON Popover
 data Position =
   Position
     { left :: Maybe Int
-    , top  :: Maybe Int
+    , top :: Maybe Int
     }
   deriving (Generic, Show, Eq)
 
@@ -79,7 +95,7 @@ instance ToJSON Position
 
 data Size =
   Size
-    { width  :: Maybe Int
+    { width :: Maybe Int
     , height :: Maybe Int
     }
   deriving (Generic, Show, Eq)
@@ -88,11 +104,11 @@ instance ToJSON Size
 
 data Tool =
   Tool
-    { toolMediaFile :: Maybe String
-    , toolId        :: T.Text
-    , position      :: Position
-    , size          :: Size
-    , toolContent   :: ToolContent
+      -- toolMediaFile :: Maybe String
+    { toolId :: T.Text
+    , position :: Position
+    , size :: Size
+    , toolContent :: ToolContent
     }
   deriving (Generic, Show, Eq)
 
@@ -110,6 +126,16 @@ instance Ord Tool where
           (_, _, Nothing, Nothing) -> LT
           (Nothing, Just t1, Nothing, Just t2) -> compare t1 t2
           (Just l1, _, Just l2, _) -> compare l1 l2
+          _ -> EQ
+
+data Resource =
+  Resource
+    { resourceUrl :: T.Text
+    , localFile :: Maybe T.Text
+    }
+  deriving (Generic, Show, Eq)
+
+instance ToJSON Resource
 
 -- | Content types to be extended
 data ToolContent
@@ -117,25 +143,41 @@ data ToolContent
       { textToolContent :: T.Text
       }
   | ImageContent
-      { imageUrl :: T.Text
+      { imageUrl :: Resource
       }
   | VideoContent
-      { videoUrl :: T.Text
+      { videoUrl :: Resource
+      , videoPreview :: Resource
       }
   | AudioContent
-      { audioUrl :: T.Text
+      { audioUrl :: Resource
       }
   deriving (Generic, Show, Eq)
 
 instance ToJSON ToolContent
 
+urlResource :: Tool -> Maybe Resource
+urlResource t =
+  case toolContent t of
+    ImageContent u -> Just u
+    VideoContent u _ -> Just u
+    AudioContent u -> Just u
+    _ -> Nothing
+
+previewResource :: Tool -> Maybe Resource
+previewResource t =
+  case toolContent t of
+    VideoContent _ p -> Just p
+    _ -> Nothing
+
 data ImportOptions =
   ImportOptions
-    { markdown      :: Bool -- convert content of text tools
+    { markdown :: Bool -- convert content of text tools
     , writeMarkdown :: Bool -- for output
-    , epub          :: Bool
-    , expId         :: String
-    , download      :: Maybe String
+    , epub :: Bool
+    , latex :: Bool
+    , expId :: String
+    , download :: Maybe String
     }
 
 type ToolTypeName = T.Text
@@ -144,10 +186,10 @@ type ToolSpec = (ToolTypeName, Cursor Node -> ToolContent)
 
 data ExpositionMetaData =
   ExpoMetaData
-    { metaTitle      :: T.Text
-    , metaDate       :: T.Text
-    , metaAuthors    :: [T.Text]
-    , metaKeywords   :: [T.Text]
+    { metaTitle :: T.Text
+    , metaDate :: T.Text
+    , metaAuthors :: [T.Text]
+    , metaKeywords :: [T.Text]
     , metaExpMainUrl :: T.Text
     }
   deriving (Generic, Show)
@@ -165,7 +207,7 @@ checkClass cls cursor =
     (NodeElement (Element _ attr _)) ->
       case M.lookup "class" attr of
         Just classes -> T.isInfixOf cls classes
-        _            -> False
+        _ -> False
     _ -> False
 
 -- | Get style property from a list of lists
@@ -175,7 +217,7 @@ styleProperty prop propLst =
     Just val ->
       case decimal $ second val of
         Right (num, _) -> Just num
-        _              -> Nothing
+        _ -> Nothing
     _ -> Nothing
   where
     second = head . tail
@@ -200,17 +242,19 @@ textContent cursor =
   TextContent $ (toStrict . renderHtml . toHtml . node) cursor
 
 imageContent :: Cursor Node -> ToolContent
-imageContent cursor = ImageContent img
+imageContent cursor = ImageContent (Resource img Nothing)
   where
     img = T.concat $ cursor $// element "img" >=> attribute "src"
 
 videoContent :: Cursor Node -> ToolContent
-videoContent cursor = VideoContent video
+videoContent cursor =
+  VideoContent (Resource video Nothing) (Resource preview Nothing)
   where
     video = T.concat $ cursor $// attribute "data-file"
+    preview = T.concat $ cursor $// attribute "data-image"
 
 audioContent :: Cursor Node -> ToolContent
-audioContent cursor = AudioContent audio
+audioContent cursor = AudioContent (Resource audio Nothing)
   where
     audio = T.concat $ cursor $// attribute "data-file"
     -- lstinfo = T.pack $ show $cursor
@@ -230,7 +274,7 @@ getTools :: ToolSpec -> Cursor Node -> [Tool]
 getTools (toolTypeName, contentFun) cursor
   -- Debug.trace
   --   (show toolTypeName ++ show ids ++ show styles)
- = L.zipWith4 (Tool Nothing) ids positions sizes toolContent
+ = L.zipWith4 Tool ids positions sizes toolContent
   where
     tools = cursor $// attributeIs "data-tool" toolTypeName
     ids = map (T.concat . attribute "data-id") tools
@@ -249,31 +293,50 @@ downloadFile url fname = do
   req <- parseRequest url
   runConduitRes $ httpSource req getResponseBody .| CB.sinkFile fname
 
-toolUrl :: Tool -> Maybe String
-toolUrl tool =
-  case toolContent tool of
-    ImageContent url -> Just (T.unpack url)
-    VideoContent url -> Just (T.unpack url)
-    AudioContent url -> Just (T.unpack url)
-    _                -> Nothing
+-- toolUrl :: Tool -> [String]
+-- toolUrl tool =
+--   case toolContent tool of
+--     ImageContent url -> [T.unpack (resourceUrl url)]
+--     VideoContent url pv ->
+--       [T.unpack (resourceUrl url), T.unpack (resourceUrl pv)]
+--     AudioContent url -> [T.unpack (resourceUrl url)]
+--     _ -> []
+resourceFileExtension :: Resource -> String
+resourceFileExtension r =
+  takeWhile (/= '?') (takeExtension (T.unpack (resourceUrl r)))
 
-toolFileExtension :: Tool -> Maybe String
-toolFileExtension tool =
-  let fname url = Just $ takeWhile (/= '?') (takeExtension url)
-   in fname =<< toolUrl tool
+resourceFileName :: Tool -> String -> String -> Resource -> String
+resourceFileName tool dir suffix r =
+  dir </> T.unpack (toolId tool) ++ suffix ++ (resourceFileExtension r)
 
-toolFileName :: Tool -> String -> Maybe String
-toolFileName tool dir =
-  (\ending -> dir </> T.unpack (toolId tool) ++ ending) <$>
-  toolFileExtension tool
+setResourceFileName :: Tool -> String -> String -> Resource -> Resource
+setResourceFileName tool dir suffix r =
+  r {localFile = Just $ T.pack $ resourceFileName tool dir suffix r}
+
+resourceToUrlAndFilename :: Resource -> Maybe (String, String)
+resourceToUrlAndFilename r =
+  case localFile r of
+    Just f -> Just (T.unpack $ resourceUrl r, T.unpack f)
+    Nothing -> Nothing
 
 downloadTool :: String -> Tool -> IO ()
 downloadTool dir tool =
-  let fileName = toolFileName tool dir
-      url = toolUrl tool
-   in case (fileName, url) of
-        (Just fnameStr, Just urlStr) -> downloadFile urlStr fnameStr
-        _                            -> return ()
+  let resources =
+        catMaybes $
+        fmap resourceToUrlAndFilename $
+        catMaybes
+          [ fmap (setResourceFileName tool dir "") (urlResource tool)
+          , fmap
+              (setResourceFileName tool dir "_preview")
+              (previewResource tool)
+          ]
+   in mapM_ (\(url, fname) -> downloadFile url fname) resources
+    -- case (fileName, urls) of
+    --     ([fnameStr], [urlStr]) -> downloadFile urlStr fnameStr
+    --     ([fnameStr, prevName], [urlStr, prevUrl]) -> do
+    --       downloadFile urlStr fnameStr
+    --       downloadFile prevUrl prevName
+    --     _ -> return ()
 
 downloadTools :: ImportOptions -> Exposition -> IO ()
 downloadTools options exposition =
@@ -356,15 +419,29 @@ mdWriterOptions =
          PanOptions.extensionsFromList [PanOptions.Ext_multiline_tables]
      })
 
-toolToMd :: Pan.PandocMonad m => ToolContent -> m Pan.Pandoc
-toolToMd (TextContent txt) = Pan.readHtml mdReaderOptions txt
-toolToMd (ImageContent img) =
-  Pan.readMarkdown PanOptions.def ("\n![](" <> img <> ")\n")
-toolToMd (AudioContent url) =
-  Pan.readMarkdown PanOptions.def ("\n![" <> url <> "](" <> url <> ")\n")
-toolToMd (VideoContent url) =
-  Pan.readMarkdown PanOptions.def ("\n![" <> url <> "](" <> url <> ")\n")
+extractLocalFile :: Resource -> T.Text
+extractLocalFile r = fromMaybe "" $ localFile r
 
+toolToMd :: Pan.PandocMonad m => Tool -> m Pan.Pandoc
+toolToMd tool =
+  case toolContent tool of
+    (TextContent txt) -> Pan.readHtml mdReaderOptions txt
+    (ImageContent img) ->
+      Pan.readMarkdown
+        PanOptions.def
+        ("\n![](" <> (extractLocalFile img) <> ")\n")
+    (AudioContent url) ->
+      Pan.readMarkdown
+        PanOptions.def
+        ("\nAudio tool with id " <> toolId tool <> "\n")
+    (VideoContent url preview) ->
+      Pan.readMarkdown
+        PanOptions.def
+        ("\nVideo tool with id " <>
+         toolId tool <> "\n![](" <> (extractLocalFile preview) <> ")\n")
+
+--      Pan.readMarkdown PanOptions.def ("\n![" <> url <> "](" <> url <> ")\n")
+--      Pan.readMarkdown PanOptions.def ("\n![" <> url <> "](" <> url <> ")\n")
 lastN :: Int -> [a] -> [a]
 lastN n xs = drop (length xs - n) xs
 
@@ -374,9 +451,7 @@ expToEPub ::
   -> ExpositionMetaData
   -> m ByteString.ByteString
 expToEPub exp meta = do
-  let sortedTools =
-        map toolContent $
-        concat $ map (L.sort . weaveTools) (expositionWeaves exp)
+  let sortedTools = concat $ map (L.sort . weaveTools) (expositionWeaves exp)
   pan <- fmap mconcat $ traverse toolToMd sortedTools
   template <- Pan.getDefaultTemplate "epub"
   let year = lastN 4 (T.unpack $ metaDate meta)
@@ -393,6 +468,29 @@ expToEPub exp meta = do
        "date"
        year)
 
+--        map toolContent $
+expToLaTeX :: Pan.PandocMonad m => Exposition -> ExpositionMetaData -> m T.Text
+--  -> m ByteString.ByteString
+expToLaTeX exp meta = do
+  let sortedTools
+  --      map toolContent $
+       = concat $ map (L.sort . weaveTools) (expositionWeaves exp)
+  pan <- fmap mconcat $ traverse toolToMd sortedTools
+  template <- Pan.getDefaultTemplate "latex"
+  let year = lastN 4 (T.unpack $ metaDate meta)
+  Pan.writeLaTeX
+    (PanOptions.def
+       { Pan.writerVariables = [("coverpage", "true"), ("titlepage", "true")]
+       , Pan.writerTemplate = Just template
+       })
+    (addMetaString
+       (addMetaStringList
+          (addMetaString pan "title" (T.unpack $ metaTitle meta))
+          "author"
+          (map T.unpack $ metaAuthors meta))
+       "date"
+       year)
+
 --------------------
 --- Markdown conversion
 --------------------
@@ -403,7 +501,7 @@ mkYamlHeader meta =
   , "title:"
   , "- type: main"
   , "  text: \"" <> metaTitle meta <> "\""
-  , "creator:"
+  , "author:"
   ] ++
   authors ++ ["..."]
   where
@@ -416,9 +514,7 @@ mkYamlHeader meta =
 expToMarkdown ::
      Pan.PandocMonad m => Exposition -> ExpositionMetaData -> m T.Text
 expToMarkdown exp meta = do
-  let sortedTools =
-        map toolContent $
-        concat $ map (L.sort . weaveTools) (expositionWeaves exp)
+  let sortedTools = concat $ map (L.sort . weaveTools) (expositionWeaves exp)
   pan <- fmap mconcat $ traverse toolToMd sortedTools
   template <- Pan.getDefaultTemplate "markdown"
   let year = lastN 4 (T.unpack $ metaDate meta)
@@ -432,17 +528,32 @@ expToMarkdown exp meta = do
        "date"
        year)
 
+--        map toolContent $
 --------------------
 --- Main functions
 --------------------
+insertToolFileName :: String -> Tool -> Tool
+insertToolFileName dir t = t {toolContent = newContent}
+  where
+    newContent =
+      case toolContent t of
+        VideoContent url prev ->
+          VideoContent
+            (setResourceFileName t dir "" url)
+            (setResourceFileName t dir "_preview" prev)
+        ImageContent url -> ImageContent (setResourceFileName t dir "" url)
+        AudioContent url -> AudioContent (setResourceFileName t dir "" url)
+        c -> c
+
 insertFileNames :: ImportOptions -> Exposition -> Exposition
 insertFileNames options exp =
-  case download options of
-    Nothing -> exp
-    Just dir ->
-      let toolsFname =
+  let dir =
+        case download options of
+          Nothing -> "media/"
+          Just dir -> dir
+   in let toolsFname =
             map
-              (map (\tool -> tool {toolMediaFile = toolFileName tool dir}))
+              (map (insertToolFileName dir))
               (map weaveTools (expositionWeaves exp))
        in exp
             { expositionWeaves =
@@ -503,7 +614,7 @@ trim :: T.Text -> T.Text
 trim = T.dropWhileEnd isSpace . T.dropWhile isSpace
 
 unwrapTxt :: Maybe T.Text -> T.Text
-unwrapTxt Nothing    = ""
+unwrapTxt Nothing = ""
 unwrapTxt (Just txt) = txt
 
 parseDetailsPage :: Cursor Node -> ExpositionMetaData
@@ -540,12 +651,14 @@ getDetailsPageData options = do
   return $ parseDetailsPage (fromDocument doc)
 
 parseArgs :: [String] -> ImportOptions
-parseArgs args = makeOptions args (ImportOptions False False False "" Nothing)
+parseArgs args =
+  makeOptions args (ImportOptions False False False False "" Nothing)
   where
     makeOptions :: [String] -> ImportOptions -> ImportOptions
     makeOptions ("-epub":t) options = makeOptions t (options {epub = True})
     makeOptions ("-md":t) options =
       makeOptions t (options {writeMarkdown = True})
+    makeOptions ("-latex":t) options = makeOptions t (options {latex = True})
     makeOptions ("-textmd":t) options =
       makeOptions t (options {markdown = True})
     makeOptions ("-d":t) options =
@@ -571,13 +684,18 @@ main = do
   details <- getDetailsPageData options
   exp <- getExposition options details
   downloadTools options exp
-  if markdown options
-    then TIO.putStrLn =<< encodeMdTxt exp
-    else TIO.putStrLn $ encodeTxt exp
+  -- if markdown options
+  --   then TIO.putStrLn =<< encodeMdTxt exp
+  --   else TIO.putStrLn $ encodeTxt exp
   if (epub options)
     then do
       epubBs <- Pan.runIOorExplode $ expToEPub exp details
       ByteString.writeFile "export.epub" $ epubBs
+    else return ()
+  if (latex options)
+    then do
+      latexExp <- Pan.runIOorExplode $ expToLaTeX exp details
+      TIO.writeFile "export.tex" $ latexExp
     else return ()
   if (writeMarkdown options)
     then do
