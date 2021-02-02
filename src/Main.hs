@@ -6,9 +6,11 @@ import Control.Monad
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson.Encode.Pretty (encodePretty)
 import qualified Data.Map.Strict as Map
+import System.FilePath.Posix
+
 
 import qualified Data.ByteString.Lazy as ByteString
-import Data.Char (isSpace)
+import Data.Char (isSpace, toLower)
 import Data.Conduit ((.|), runConduitRes)
 import qualified Data.Conduit.Binary as CB
 import qualified Data.List as L
@@ -19,6 +21,7 @@ import qualified Data.Text.IO as TIO
 import Data.Text.Lazy (toStrict)
 import Data.Text.Lazy.Encoding (decodeUtf8)
 import Data.Text.Read (decimal)
+import Debug.Trace
 import qualified Debug.Trace as Debug
 import GHC.Generics
 import Network.HTTP.Simple (getResponseBody, httpSink, httpSource, parseRequest)
@@ -137,6 +140,17 @@ data Resource =
 
 instance ToJSON Resource
 
+resourceEmpty :: Resource -> Bool
+resourceEmpty = T.null . resourceUrl
+
+toolEmpty :: Tool -> Bool
+toolEmpty t =
+  case toolContent t of
+    TextContent t -> T.null t
+    ImageContent r -> resourceEmpty r
+    VideoContent r p -> resourceEmpty r || resourceEmpty p
+    AudioContent r -> resourceEmpty r
+
 -- | Content types to be extended
 data ToolContent
   = TextContent
@@ -162,6 +176,12 @@ urlResource t =
     ImageContent u -> Just u
     VideoContent u _ -> Just u
     AudioContent u -> Just u
+    _ -> Nothing
+
+urlResourceImages :: Tool -> Maybe Resource
+urlResourceImages t =
+  case toolContent t of
+    ImageContent u -> Just u
     _ -> Nothing
 
 previewResource :: Tool -> Maybe Resource
@@ -319,17 +339,25 @@ resourceToUrlAndFilename r =
     Just f -> Just (T.unpack $ resourceUrl r, T.unpack f)
     Nothing -> Nothing
 
-downloadTool :: String -> Tool -> IO ()
-downloadTool dir tool =
-  let resources =
-        catMaybes $
-        fmap resourceToUrlAndFilename $
-        catMaybes
-          [ fmap (setResourceFileName tool dir "") (urlResource tool)
-          , fmap
-              (setResourceFileName tool dir "_preview")
-              (previewResource tool)
-          ]
+downloadTool :: String -> Bool -> Tool -> IO ()
+downloadTool dir preview tool =
+  let resourcesWithNames =
+        if preview
+          then catMaybes
+                 [ fmap
+                     (setResourceFileName tool dir "")
+                     (urlResourceImages tool)
+                 , fmap
+                     (setResourceFileName tool dir "_preview")
+                     (previewResource tool)
+                 ]
+          else catMaybes
+                 [ fmap (setResourceFileName tool dir "") (urlResource tool)
+                 , fmap
+                     (setResourceFileName tool dir "_preview")
+                     (previewResource tool)
+                 ]
+      resources = catMaybes $ fmap resourceToUrlAndFilename $ resourcesWithNames
    in mapM_ (\(url, fname) -> downloadFile url fname) resources
     -- case (fileName, urls) of
     --     ([fnameStr], [urlStr]) -> downloadFile urlStr fnameStr
@@ -346,7 +374,7 @@ downloadTools options exposition =
         Just dir -> do
           exists <- doesDirectoryExist dir
           when (not exists) $ createDirectory dir
-          mapM_ (downloadTool dir) tools
+          mapM_ (downloadTool dir (latex options)) tools
 
 --------------------
 --- Popovers
@@ -422,6 +450,15 @@ mdWriterOptions =
 extractLocalFile :: Resource -> T.Text
 extractLocalFile r = fromMaybe "" $ localFile r
 
+extractLocalImageFile :: Resource -> T.Text
+extractLocalImageFile r =
+  let file = T.unpack $ fromMaybe "" $ localFile r in
+    if (fmap toLower (takeExtension file)) == ".gif" then
+      T.pack ((takeDirectory file) </> (takeBaseName file ++ "-0.png"))
+    else
+      T.pack file
+
+
 toolToMd :: Pan.PandocMonad m => Tool -> m Pan.Pandoc
 toolToMd tool =
   case toolContent tool of
@@ -429,7 +466,7 @@ toolToMd tool =
     (ImageContent img) ->
       Pan.readMarkdown
         PanOptions.def
-        ("\n![](" <> (extractLocalFile img) <> ")\n")
+        ("\n![](" <> (extractLocalImageFile img) <> ")\n")
     (AudioContent url) ->
       Pan.readMarkdown
         PanOptions.def
@@ -568,19 +605,28 @@ getWeave id (title, url) = do
   req <- parseRequest $ "https://www.researchcatalogue.net" <> T.unpack url
   doc <- httpSink req $ const sinkDoc
   let cursor = fromDocument doc
-  let tools = concatMap (\spec -> getTools spec cursor) toolSpecs
+  let tools =
+        L.filter (not . toolEmpty) $
+        concatMap (\spec -> getTools spec cursor) toolSpecs
   popovers <- getPopovers id cursor
-  return $
-    Weave
-      { weaveTitle = title
+  let w = Weave { weaveTitle = title
       , weaveUrl = url
       , weaveTools = tools
       , weavePopovers = popovers
       }
+  return $ w
+    
+defaultWeave :: String -> (T.Text, T.Text)
+defaultWeave id =
+  let idN = read id :: Integer
+   in ("default", T.pack ("/view/" ++ id ++ "/" ++ (show (idN + 1))))
 
 parseExposition :: String -> ExpositionMetaData -> Cursor Node -> IO Exposition
 parseExposition id metadata cursor = do
-  let expToc = toc cursor
+  let expToc =
+        case toc cursor of
+          [] -> [defaultWeave id]
+          tocContent -> tocContent
   weaves <- mapM (getWeave id) expToc
   return $ Exposition expToc (T.pack id) metadata weaves
 
@@ -684,7 +730,7 @@ main = do
   details <- getDetailsPageData options
   exp <- getExposition options details
   downloadTools options exp
-  -- if markdown options
+  -- if (markdown options)
   --   then TIO.putStrLn =<< encodeMdTxt exp
   --   else TIO.putStrLn $ encodeTxt exp
   if (epub options)
