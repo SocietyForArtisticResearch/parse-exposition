@@ -8,7 +8,6 @@ import Data.Aeson.Encode.Pretty (encodePretty)
 import qualified Data.Map.Strict as Map
 import System.FilePath.Posix
 
-
 import qualified Data.ByteString.Lazy as ByteString
 import Data.Char (isSpace, toLower)
 import Data.Conduit ((.|), runConduitRes)
@@ -123,7 +122,7 @@ instance Ord Tool where
         p2 = position t2
      in case (left p1, top p1, left p2, top p2) of
           (Just l1, Just t1, Just l2, Just t2)
-            | l1 == l2 -> compare t1 t2
+            | abs (l1 - l2) < 50 -> compare t1 t2
           (Nothing, Nothing, Nothing, Nothing) -> EQ
           (Nothing, Nothing, _, _) -> GT
           (_, _, Nothing, Nothing) -> LT
@@ -131,6 +130,9 @@ instance Ord Tool where
           (Just l1, _, Just l2, _) -> compare l1 l2
           _ -> EQ
 
+--            | l1 == l2 -> compare t1 t2
+-- x x
+-- x x
 data Resource =
   Resource
     { resourceUrl :: T.Text
@@ -373,7 +375,7 @@ downloadTools options exposition =
         Nothing -> return ()
         Just dir -> do
           exists <- doesDirectoryExist dir
-          when (not exists) $ createDirectory dir
+          unless exists $ createDirectory dir
           mapM_ (downloadTool dir (latex options)) tools
 
 --------------------
@@ -452,12 +454,10 @@ extractLocalFile r = fromMaybe "" $ localFile r
 
 extractLocalImageFile :: Resource -> T.Text
 extractLocalImageFile r =
-  let file = T.unpack $ fromMaybe "" $ localFile r in
-    if (fmap toLower (takeExtension file)) == ".gif" then
-      T.pack ((takeDirectory file) </> (takeBaseName file ++ "-0.png"))
-    else
-      T.pack file
-
+  let file = T.unpack $ fromMaybe "" $ localFile r
+   in if (fmap toLower (takeExtension file)) == ".gif"
+        then T.pack ((takeDirectory file) </> (takeBaseName file ++ "-0.png"))
+        else T.pack file
 
 toolToMd :: Pan.PandocMonad m => Tool -> m Pan.Pandoc
 toolToMd tool =
@@ -473,9 +473,14 @@ toolToMd tool =
         ("\nAudio tool with id " <> toolId tool <> "\n")
     (VideoContent url preview) ->
       Pan.readMarkdown
-        PanOptions.def
-        ("\nVideo tool with id " <>
-         toolId tool <> "\n![](" <> (extractLocalFile preview) <> ")\n")
+        (PanOptions.def
+           { PanOptions.readerExtensions =
+               (PanOptions.enableExtension
+                  PanOptions.Ext_implicit_figures
+                  (PanOptions.getDefaultExtensions "latex"))
+           })
+        ("\n![" <> "Video tool with id " <>
+         toolId tool  <> "](" <> (extractLocalFile preview) <> ")\n")
 
 --      Pan.readMarkdown PanOptions.def ("\n![" <> url <> "](" <> url <> ")\n")
 --      Pan.readMarkdown PanOptions.def ("\n![" <> url <> "](" <> url <> ")\n")
@@ -609,13 +614,15 @@ getWeave id (title, url) = do
         L.filter (not . toolEmpty) $
         concatMap (\spec -> getTools spec cursor) toolSpecs
   popovers <- getPopovers id cursor
-  let w = Weave { weaveTitle = title
-      , weaveUrl = url
-      , weaveTools = tools
-      , weavePopovers = popovers
-      }
+  let w =
+        Weave
+          { weaveTitle = title
+          , weaveUrl = url
+          , weaveTools = tools
+          , weavePopovers = popovers
+          }
   return $ w
-    
+
 defaultWeave :: String -> (T.Text, T.Text)
 defaultWeave id =
   let idN = read id :: Integer
