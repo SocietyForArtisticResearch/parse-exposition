@@ -200,6 +200,7 @@ data ImportOptions =
     , latex :: Bool
     , expId :: String
     , download :: Maybe String
+    , host :: String
     }
 
 type ToolTypeName = T.Text
@@ -384,14 +385,15 @@ downloadTools options exposition =
 popoverUrl :: String -> String -> String
 popoverUrl expoId popId = "/view/popover/" ++ expoId ++ "/" ++ popId
 
-getPopovers :: String -> Cursor Node -> IO [Popover]
-getPopovers expoId cursor = L.zipWith Popover ids <$> content
+getPopovers :: String -> String -> Cursor Node -> IO [Popover]
+getPopovers host expoId cursor = L.zipWith Popover ids <$> content
   where
     ids = cursor $// element "a" >=> attribute "data-popover"
     content =
       traverse
         (\u ->
            getWeave
+             host
              expoId
              ("popover", (T.pack (popoverUrl expoId (T.unpack u)))))
         ids
@@ -479,8 +481,9 @@ toolToMd tool =
                   PanOptions.Ext_implicit_figures
                   (PanOptions.getDefaultExtensions "latex"))
            })
-        ("\n![" <> "Video tool with id " <>
-         toolId tool  <> "](" <> (extractLocalFile preview) <> ")\n")
+        ("\n![" <>
+         "Video tool with id " <>
+         toolId tool <> "](" <> (extractLocalFile preview) <> ")\n")
 
 --      Pan.readMarkdown PanOptions.def ("\n![" <> url <> "](" <> url <> ")\n")
 --      Pan.readMarkdown PanOptions.def ("\n![" <> url <> "](" <> url <> ")\n")
@@ -605,15 +608,15 @@ insertFileNames options exp =
                   toolsFname
             }
 
-getWeave :: String -> (T.Text, T.Text) -> IO Weave
-getWeave id (title, url) = do
-  req <- parseRequest $ "https://www.researchcatalogue.net" <> T.unpack url
+getWeave :: String -> String -> (T.Text, T.Text) -> IO Weave
+getWeave host id (title, url) = do
+  req <- parseRequest $ host <> T.unpack url
   doc <- httpSink req $ const sinkDoc
   let cursor = fromDocument doc
   let tools =
         L.filter (not . toolEmpty) $
         concatMap (\spec -> getTools spec cursor) toolSpecs
-  popovers <- getPopovers id cursor
+  popovers <- getPopovers host id cursor
   let w =
         Weave
           { weaveTitle = title
@@ -628,13 +631,13 @@ defaultWeave id =
   let idN = read id :: Integer
    in ("default", T.pack ("/view/" ++ id ++ "/" ++ (show (idN + 1))))
 
-parseExposition :: String -> ExpositionMetaData -> Cursor Node -> IO Exposition
-parseExposition id metadata cursor = do
+parseExposition :: String -> String -> ExpositionMetaData -> Cursor Node -> IO Exposition
+parseExposition host id metadata cursor = do
   let expToc =
         case toc cursor of
           [] -> [defaultWeave id]
           tocContent -> tocContent
-  weaves <- mapM (getWeave id) expToc
+  weaves <- mapM (getWeave host id) expToc
   return $ Exposition expToc (T.pack id) metadata weaves
 
 toc :: Cursor Node -> [(T.Text, T.Text)]
@@ -655,13 +658,11 @@ getExposition :: ImportOptions -> ExpositionMetaData -> IO Exposition
 getExposition options metadata = do
   req <- parseRequest $ T.unpack (metaExpMainUrl metadata)
   doc <- httpSink req $ const sinkDoc
-  exp <- parseExposition (expId options) metadata (fromDocument doc)
+  exp <- parseExposition (host options) (expId options) metadata (fromDocument doc)
   return $ insertFileNames options exp
 
-detailsUrl :: String -> String
-detailsUrl expId =
-  "https://www.researchcatalogue.net/profile/show-exposition?exposition=" <>
-  expId
+detailsUrl :: String -> String -> String
+detailsUrl host expId = host <> "/profile/show-exposition?exposition=" <> expId
 
 trim :: T.Text -> T.Text
 trim = T.dropWhileEnd isSpace . T.dropWhile isSpace
@@ -699,13 +700,22 @@ parseDetailsPage cursor =
 
 getDetailsPageData :: ImportOptions -> IO ExpositionMetaData
 getDetailsPageData options = do
-  req <- parseRequest $ detailsUrl (expId options)
+  req <- parseRequest $ detailsUrl (host options) (expId options)
   doc <- httpSink req $ const sinkDoc
   return $ parseDetailsPage (fromDocument doc)
 
 parseArgs :: [String] -> ImportOptions
 parseArgs args =
-  makeOptions args (ImportOptions False False False False "" Nothing)
+  makeOptions
+    args
+    (ImportOptions
+       False
+       False
+       False
+       False
+       ""
+       Nothing
+       "https://www.researchcatalogue.net")
   where
     makeOptions :: [String] -> ImportOptions -> ImportOptions
     makeOptions ("-epub":t) options = makeOptions t (options {epub = True})
@@ -716,11 +726,13 @@ parseArgs args =
       makeOptions t (options {markdown = True})
     makeOptions ("-d":t) options =
       makeOptions t (options {download = Just "media"})
+    makeOptions ("-host":h:t) options = makeOptions t (options {host = h})
     makeOptions (id:t) options = makeOptions t (options {expId = id})
     makeOptions [] options = options
 
 usage =
-  putStrLn "Usage: parse-exposition [-epub] [-textmd] [-md] [-d] exposition-id"
+  putStrLn
+    "Usage: parse-exposition [-epub] [-textmd] [-md] [-d] [-h <host>] exposition-id"
 
 exit = exitSuccess
 
