@@ -1,10 +1,12 @@
 #!/bin/bash
-stack exec -- parse-exposition -d -latex $1
-cd media/
+stack exec -- parse-exposition -d $2 -latex $1
+cd $2
 for i in *.gif ; do 
     convert -coalesce "$i" "$(basename "${i/.gif}")".png
 done
-cd ..
+for i in *.svg ; do 
+    convert -coalesce "$i" "$(basename "${i/.svg}")".png
+done
 xelatex -interaction=nonstopmode export.tex
 #rm *.tex
 #rm -r media/

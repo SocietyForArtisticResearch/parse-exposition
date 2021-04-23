@@ -459,6 +459,8 @@ extractLocalImageFile r =
   let file = T.unpack $ fromMaybe "" $ localFile r
    in if (fmap toLower (takeExtension file)) == ".gif"
         then T.pack ((takeDirectory file) </> (takeBaseName file ++ "-0.png"))
+        else if (fmap toLower (takeExtension file)) == ".svg"
+        then T.pack ((takeDirectory file) </> (takeBaseName file ++ ".png"))
         else T.pack file
 
 toolToMd :: Pan.PandocMonad m => Tool -> m Pan.Pandoc
@@ -592,10 +594,10 @@ insertToolFileName dir t = t {toolContent = newContent}
 
 insertFileNames :: ImportOptions -> Exposition -> Exposition
 insertFileNames options exp =
-  let dir =
-        case download options of
-          Nothing -> "media/"
-          Just dir -> dir
+  let dir = ""
+        -- case download options of
+        --   Nothing -> "media/"
+        --   Just dir -> dir
    in let toolsFname =
             map
               (map (insertToolFileName dir))
@@ -724,8 +726,8 @@ parseArgs args =
     makeOptions ("-latex":t) options = makeOptions t (options {latex = True})
     makeOptions ("-textmd":t) options =
       makeOptions t (options {markdown = True})
-    makeOptions ("-d":t) options =
-      makeOptions t (options {download = Just "media"})
+    makeOptions ("-d":dir:t) options =
+      makeOptions t (options {download = Just dir})
     makeOptions ("-host":h:t) options = makeOptions t (options {host = h})
     makeOptions (id:t) options = makeOptions t (options {expId = id})
     makeOptions [] options = options
@@ -752,18 +754,19 @@ main = do
   -- if (markdown options)
   --   then TIO.putStrLn =<< encodeMdTxt exp
   --   else TIO.putStrLn $ encodeTxt exp
+  let fname = fromMaybe "" (download options) <> "export"
   if (epub options)
     then do
       epubBs <- Pan.runIOorExplode $ expToEPub exp details
-      ByteString.writeFile "export.epub" $ epubBs
+      ByteString.writeFile (fname <> ".epub") epubBs
     else return ()
   if (latex options)
     then do
       latexExp <- Pan.runIOorExplode $ expToLaTeX exp details
-      TIO.writeFile "export.tex" $ latexExp
+      TIO.writeFile (fname <> ".tex") latexExp
     else return ()
   if (writeMarkdown options)
     then do
       md <- Pan.runIOorExplode $ expToMarkdown exp details
-      TIO.writeFile "export.md" $ (mkYamlHeader details) <> md
+      TIO.writeFile (fname <> ".md") (mkYamlHeader details <> md)
     else return ()
